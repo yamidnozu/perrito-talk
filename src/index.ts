@@ -52,12 +52,13 @@ const setting = (
     ? number
     : fallback;
 };
-const json = (v: unknown, status = 200) =>
+const json = (v: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(v, {
     status,
     headers: {
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff",
+      ...headers,
     },
   });
 async function body(request: Request) {
@@ -121,8 +122,9 @@ export default {
             acoustic_hints: input.acoustic_hints,
           });
         const live = input.source === "live";
-        const asr = () =>
-          enabled(env.USE_ASR)
+        let asrMs = 0;
+        const asr = () => {
+          const p = enabled(env.USE_ASR)
             ? transcribeSpeech(env.MODEL_API_KEY!, input.media, {
                 minimumTurnMs: setting(
                   env.ASR_MIN_TURN_MS,
@@ -138,6 +140,16 @@ export default {
                 ),
               }).catch(() => null)
             : null;
+          // Wall time of the parallel ASR leg; read after awaiting asrLive.
+          if (p) {
+            const started = Date.now();
+            const done = () => {
+              asrMs = Date.now() - started;
+            };
+            p.then(done, done);
+          }
+          return p;
+        };
         // Live stays on the fast path: no SAM, and ASR runs in parallel with Spark
         // (it only feeds the code interpretation, not the prompt). Uploads keep the
         // SAM/ASR pre-pass so Spark gets location and speech hints.
@@ -173,6 +185,7 @@ export default {
         const deep = input.deep
           ? await deepDescriptors(env.MODEL_API_KEY!, prompt, parts, input.lang)
           : null;
+        const sparkStart = Date.now();
         const result =
           deep?.descriptors ??
           (await structured(
@@ -181,16 +194,21 @@ export default {
             descriptorSchema,
             parts,
           ));
+        const sparkMs = Date.now() - sparkStart;
         if (!matchesSchema(result, descriptorSchema))
           throw new Error("Invalid model response");
         if (asrLive) human_speech = await asrLive;
-        return json({
-          ...interpret(result as Descriptors, input, { sam, human_speech }),
-          analysis_mode: input.deep ? "deep" : "single",
-          descriptor_calls: deep?.calls ?? 1,
-          acoustic_hints: input.acoustic_hints,
-          mode: "live",
-        });
+        return json(
+          {
+            ...interpret(result as Descriptors, input, { sam, human_speech }),
+            analysis_mode: input.deep ? "deep" : "single",
+            descriptor_calls: deep?.calls ?? 1,
+            acoustic_hints: input.acoustic_hints,
+            mode: "live",
+          },
+          200,
+          { "Server-Timing": `spark;dur=${sparkMs}, asr;dur=${asrMs}` },
+        );
       }
       if (path === "/api/camera/summary") {
         const input = validateCamera(v);
