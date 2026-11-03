@@ -1,5 +1,10 @@
 import { createMotionHold, createPresenceHold } from "./watcher/motion.js";
-import { certaintyWord, stateLabel, observedTexts } from "./evidence-utils.js";
+import {
+  certaintyWord,
+  stateLabel,
+  observedTexts,
+  behaviorSummary,
+} from "./evidence-utils.js";
 import { cameraHeuristics, alertTitle } from "./camera-heuristics.js";
 import { createFlight } from "./watcher/flight.js";
 import { newAlerts } from "./live-logic.js";
@@ -80,29 +85,36 @@ export const BLUR_NOTICE = {
 export function mountLive({ getLang, api, labelOf = (x) => x }) {
   const root = document.getElementById("liveView"),
     tr = (en, es) => (getLang() === "es" ? es : en);
+  // Judge-first order: start, see the camera, get a reading. Engineering knobs and
+  // raw meters live in collapsed sections so nothing looks like a debug console.
   root.innerHTML = `<h2 id="liveTitle"></h2><p id="liveHelp"></p>
+  <div class="live-controls live-primary">
+    <button id="liveStart" class="live-start"></button><button id="liveStop" disabled></button>
+    <label><span id="liveCameraLabel"></span><select id="liveCamera"></select></label>
+    <label><span id="liveMicLabel"></span><select id="liveMic"></select></label>
+  </div>
+  <div class="live-stage"><video id="liveVideo" playsinline muted autoplay></video><canvas id="liveZone"></canvas><div id="liveOverlay" aria-live="polite"></div></div>
   <div class="live-now"><button id="liveAnalyze" class="live-analyze" disabled></button>
     <p id="liveStep" class="live-step" role="status" aria-live="polite"></p>
     <section id="liveResult" class="live-result" aria-live="polite" hidden></section></div>
+  <p id="liveCounter" role="status"></p><p id="liveStatus" role="status"></p>
+  <p id="liveBlur" class="notice" role="alert" hidden></p>
+  <p id="liveBanner" role="alert" hidden></p>
+  <details class="live-more"><summary id="liveAdvancedLabel"></summary>
   <div class="live-controls">
-    <label><span id="liveCameraLabel"></span><select id="liveCamera"></select></label>
-    <label><span id="liveMicLabel"></span><select id="liveMic"></select></label>
     <label><span id="liveCheckinLabel"></span><input id="liveCheckin" type="number" min="0" max="600" value="${PARAMETERS.checkinSeconds}"></label>
     <label><span id="liveMaxLabel"></span><input id="liveMax" type="number" min="1" max="100" value="20"></label>
     <label><span id="liveSensitivityLabel"></span><select id="liveSensitivity"><option value="low"></option><option value="medium"></option><option value="high"></option></select></label>
     <label><span id="liveSustainedLabel"></span><input id="liveSustained" type="number" min="2" max="5" value="2"></label>
     <label><span id="liveDogLabel"></span><input id="liveDog" maxlength="80" value="default"></label>
-    <button id="liveStart"></button><button id="liveStop" disabled></button>
-  </div>
-  <p id="liveCounter" role="status"></p><p id="liveStatus" role="status"></p>
-  <p id="liveBlur" class="notice" role="alert" hidden></p>
+    <button id="liveDrawZone"></button><button id="liveClearZone"></button>
+  </div></details>
+  <details class="live-more"><summary id="liveTechLabel"></summary>
   <div class="watcher-meters"><strong id="liveState"></strong>
     <label><span id="liveRmsLabel"></span><meter id="liveRms" min="0" max="1" value="0"></meter><span id="liveRmsValue"></span></label>
     <p id="liveSound"></p><p id="liveMotion"></p><p id="livePresence"></p><p id="liveDetector"></p><p id="liveVocal"></p><p id="liveRelative"></p>
-  </div>
-  <div class="live-stage"><video id="liveVideo" playsinline muted autoplay></video><canvas id="liveZone"></canvas><div id="liveOverlay" aria-live="polite"></div></div>
-  <div class="live-controls"><button id="liveDrawZone"></button><button id="liveClearZone"></button></div>
-  <p id="liveBanner" role="alert" hidden></p><ol id="liveTimeline" aria-live="polite"></ol>`;
+  </div></details>
+  <h3 id="liveTimelineLabel" class="live-timeline-title"></h3><ol id="liveTimeline" aria-live="polite"></ol>`;
   const $ = (id) => document.getElementById(id),
     video = $("liveVideo"),
     zoneCanvas = $("liveZone");
@@ -271,17 +283,21 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       const top = Object.entries(f.scores || {})
         .filter(([k]) => k !== "dog")
         .sort((a, b) => b[1] - a[1])[0];
-      const sound = top?.[1]
-        ? `${heardText(top[0], getLang()).replace(/^🔊 /, "")} ${Math.round(top[1] * 100)}%`
-        : `${tr("level", "nivel")} ${(f.rms || 0).toFixed(3)}${gates.ready ? ` / ${tr("gate", "umbral")} ${gates.rms.toFixed(3)}` : ""}`;
-      const motion = `${(s.rawMotion || 0).toFixed(3)}${gates.ready ? ` / ${tr("gate", "umbral")} ${gates.motion.toFixed(3)}` : ` (${tr("calibrating", "calibrando")} ${Math.min(10, Math.floor((now - s.startedAt) / 1000))}/10 s)`}`;
       const next =
         s.presentSince != null &&
         s.lastTrigger !== undefined &&
         s.checkinSeconds
           ? ` · ${tr("next check-in", "próximo chequeo")} ${Math.max(0, Math.ceil((Math.max(s.lastTrigger, s.presentSince) + s.checkinSeconds * 1000 - now) / 1000))} s`
           : "";
-      return `👀 ${tr("Watching", "Vigilando")} (${tr("sound", "sonido")} ${sound}, ${tr("motion", "movimiento")} ${motion})${next}`;
+      // Plain-language status; raw levels/gates stay in the technical panel.
+      const dog = f.dogPresent
+        ? tr("dog in view", "perro a la vista")
+        : tr("looking for your dog", "buscando a tu perro");
+      const heard = top?.[1] ? ` · ${heardText(top[0], getLang())}` : "";
+      const calib = gates.ready
+        ? ""
+        : ` · ${tr("calibrating", "calibrando")} ${Math.min(10, Math.floor((now - s.startedAt) / 1000))}/10 s`;
+      return `👀 ${tr("Watching", "Vigilando")}: ${dog}${heard}${calib}${next}`;
     };
     switch (st.kind) {
       case "change":
@@ -301,9 +317,16 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       ["liveTitle", "Watcher", "Vigilante"],
       [
         "liveHelp",
-        "Free on-device observations. Only triggers send a 4 s + 6 s clip to Muse Spark. Numeric gates are engineering settings, not validated behavior thresholds.",
-        "Observaciones gratuitas en el dispositivo. Solo los disparadores envían un clip de 4 s + 6 s a Muse Spark. Los umbrales son ajustes de ingeniería, no límites de conducta validados.",
+        "Point the camera at your dog and press Start. The phone watches on-device for free; when your dog appears, barks or moves, it sends a 10 s clip to Muse Spark and shows what it sees and what the science says.",
+        "Apunta la cámara a tu perro y pulsa Iniciar. El teléfono observa gratis en el dispositivo; cuando tu perro aparece, ladra o se mueve, envía un clip de 10 s a Muse Spark y te muestra qué hace y qué dice la ciencia.",
       ],
+      ["liveAdvancedLabel", "Advanced settings", "Ajustes avanzados"],
+      [
+        "liveTechLabel",
+        "Live technical data (on-device sensors)",
+        "Datos técnicos en vivo (sensores del dispositivo)",
+      ],
+      ["liveTimelineLabel", "Readings", "Lecturas"],
       ["liveCameraLabel", "Camera", "Cámara"],
       ["liveMicLabel", "Microphone", "Micrófono"],
       [
@@ -715,15 +738,17 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         return;
       }
       row.className = `live-ai ${r.primary.label}`;
+      // On-device detector state at clip time; only used to explain an empty reading.
+      const noDog = !s.features.dogPresent;
       const ts = new Date().toISOString();
       row.updateLanguage = () => {
-        renderReading(row, r, { lang: getLang(), media: clip.media });
+        renderReading(row, r, { lang: getLang(), media: clip.media, noDog });
       };
       row.updateLanguage();
       const card = $("liveResult");
       card.hidden = false;
       card.updateLanguage = () => {
-        renderReading(card, r, { lang: getLang(), media: clip.media });
+        renderReading(card, r, { lang: getLang(), media: clip.media, noDog });
         const when = document.createElement("small");
         when.className = "live-result-when";
         when.textContent = `${clock(Date.now())} · ${reasonText(watcher.trigger_types)}`;
@@ -739,12 +764,25 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       const overlay = $("liveOverlay");
       overlay.updateLanguage = () => {
         overlay.replaceChildren();
+        // Lead with what the dog is doing; a state only when evidence supports one.
+        const lang = getLang(),
+          top = r.interpretations?.[0];
         const title = document.createElement("strong");
-        title.textContent = `${r.primary.emoji} ${r.interpretations?.[0] ? stateLabel(r.interpretations[0].state, getLang()) : labelOf(r.primary.label)} · ${certaintyWord(r.certainty, getLang())}`;
+        title.textContent =
+          behaviorSummary(r, lang) ||
+          (noDog
+            ? tr("No dog in view", "No se ve un perro")
+            : tr("Couldn't see clearly", "No se vio con claridad"));
         overlay.append(title);
-        const observed = document.createElement("span");
-        observed.textContent = observedTexts(r, getLang()).join(" · ");
-        overlay.append(observed);
+        const meaning = document.createElement("span");
+        meaning.textContent =
+          top && top.state !== "unspecified"
+            ? `${r.primary.emoji} ${stateLabel(top.state, lang)} · ${certaintyWord(r.certainty, lang)}`
+            : tr(
+                "No emotion claimed: no evidence rule matched",
+                "Sin emoción atribuida: ninguna regla de evidencia coincide",
+              );
+        overlay.append(meaning);
       };
       overlay.updateLanguage();
       s.clips.push({
@@ -968,6 +1006,10 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
             yamnet: features.yamnet,
             audio: features.audioStatus,
             vision: s.features.visionStatus,
+            dog_via: s.features.dogVia,
+            low_light: s.features.lowLight,
+            detect_ms: s.features.detectMs,
+            detector_model: s.features.detectorModel,
             visionError: s.features.visionError,
           });
           if (window.__watcher.features.length > 300)

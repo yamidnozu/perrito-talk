@@ -960,3 +960,46 @@ dialog img {
   opacity: 0.75;
   margin-bottom: 0.4rem;
 }
+.reading-headline {
+  margin: 0.4rem 0 0.6rem;
+}
+.reading-headline small {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+.reading-headline p {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
+}
+.reading-how summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.live-primary {
+  align-items: end;
+}
+.live-start {
+  font-size: 1.1rem;
+  padding: 0.8rem 1.6rem;
+}
+.live-more {
+  margin: 0.8rem 0;
+}
+.live-more summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.live-timeline-title:empty,
+#liveTimeline:empty {
+  display: none;
+}
+.live-controls select,
+.live-controls input,
+.controls select {
+  max-width: 100%;
+  min-width: 0;
+}
