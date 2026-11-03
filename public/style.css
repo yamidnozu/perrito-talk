@@ -836,3 +836,13 @@ dialog img {
   text-overflow: ellipsis;
   margin-block: 0.2rem;
 }
+
+/* OS camera-effect warning in live mode */
+.notice {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  background: #fff4e5;
+  color: #8a4b08;
+  font-size: 0.9rem;
+}

@@ -31,6 +31,40 @@ export function heardText(kind, lang) {
     : `🔊 heard: ${en[kind] || kind.replaceAll("_", " ")}`;
 }
 
+/** Raw microphone: browser voice processing filters out barks and howls. */
+export const RAW_AUDIO = {
+  echoCancellation: false,
+  noiseSuppression: false,
+  autoGainControl: false,
+};
+
+/**
+ * Turns off OS/browser camera effects (background blur, face framing, eye-gaze
+ * correction) when the track exposes them. Returns true if blur is still on,
+ * e.g. because Windows Studio Effects or macOS applies it outside the browser.
+ */
+export async function disableCameraEffects(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return false;
+  const caps = track.getCapabilities?.() || {};
+  for (const effect of ["backgroundBlur", "faceFraming", "eyeGazeCorrection"]) {
+    if (!(effect in caps)) continue;
+    try {
+      await track.applyConstraints({ [effect]: false });
+    } catch {}
+  }
+  try {
+    return track.getSettings?.().backgroundBlur === true;
+  } catch {
+    return false;
+  }
+}
+
+export const BLUR_NOTICE = {
+  en: "Your system is blurring the camera; turn it off in Windows/macOS camera effects.",
+  es: "Tu sistema está aplicando desenfoque a la cámara; desactívalo en los efectos de cámara de Windows/macOS.",
+};
+
 export function mountLive({ getLang, api, labelOf = (x) => x }) {
   const root = document.getElementById("liveView");
   const tr = (en, es) => (getLang() === "es" ? es : en);
@@ -39,7 +73,7 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     <label><span id="liveIntervalLabel"></span><input id="liveInterval" type="number" min="10" max="15" value="12"></label>
     <label><span id="liveMaxLabel"></span><input id="liveMax" type="number" min="1" max="100" value="20"></label>
     <button id="liveStart"></button><button id="liveStop" disabled></button></div>
-    <p id="liveCounter" role="status">0 / 20</p><p id="liveStatus" role="status"></p>
+    <p id="liveCounter" role="status">0 / 20</p><p id="liveStatus" role="status"></p><p id="liveBlur" class="notice" role="alert" hidden></p>
     <div class="live-stage"><video id="liveVideo" playsinline muted autoplay></video><div id="liveOverlay" aria-live="polite"></div></div>
     <p id="liveBanner" role="alert" hidden></p><ol id="liveTimeline" aria-live="polite"></ol>`;
   const $ = (id) => document.getElementById(id);
@@ -361,10 +395,10 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         acquired = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { exact: facing },
-            width: { ideal: 640 },
-            height: { ideal: 480 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           },
-          audio: true,
+          audio: RAW_AUDIO,
         });
       } catch (e) {
         if (!["OverconstrainedError", "NotFoundError"].includes(e.name))
@@ -380,9 +414,17 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
           ) || cameras[facing === "environment" ? cameras.length - 1 : 0];
         acquired = await navigator.mediaDevices.getUserMedia({
           video: camera
-            ? { deviceId: { exact: camera.deviceId } }
-            : { facingMode: facing },
-          audio: true,
+            ? {
+                deviceId: { exact: camera.deviceId },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              }
+            : {
+                facingMode: facing,
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+          audio: RAW_AUDIO,
         });
       }
       if (active !== s) {
@@ -390,6 +432,9 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         return;
       }
       s.stream = acquired;
+      const blurred = await disableCameraEffects(acquired);
+      $("liveBlur").hidden = !blurred;
+      $("liveBlur").textContent = BLUR_NOTICE[getLang()] || BLUR_NOTICE.en;
       $("liveVideo").srcObject = acquired;
       await $("liveVideo").play();
       if (active !== s) return;

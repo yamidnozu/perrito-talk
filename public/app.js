@@ -1,4 +1,10 @@
-import { heardText, mountLive } from "./live.js";
+import {
+  BLUR_NOTICE,
+  RAW_AUDIO,
+  disableCameraEffects,
+  heardText,
+  mountLive,
+} from "./live.js";
 import {
   cameraHeuristics,
   mergeAlerts,
@@ -421,7 +427,7 @@ async function record(video) {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
       throw new Error();
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
+      audio: RAW_AUDIO,
       video: video
         ? {
             facingMode: "environment",
@@ -430,6 +436,8 @@ async function record(video) {
           }
         : false,
     });
+    if (video && (await disableCameraEffects(stream)))
+      status(BLUR_NOTICE[lang]);
     const types = video
       ? ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]
       : ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"];
