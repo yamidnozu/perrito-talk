@@ -113,7 +113,7 @@ const waitEvent = (el, event, timeout = 15000) =>
     el.addEventListener("error", bad, { once: true });
   });
 
-export async function normalize(file) {
+export async function normalize(file, durationHint = 0) {
   if (file.size > 100 * 1024 * 1024)
     throw new Error("File is too large (100 MB maximum).");
   const url = URL.createObjectURL(file);
@@ -165,7 +165,9 @@ export async function normalize(file) {
         thumbnail,
         notice: "",
       };
-    const duration = video.duration;
+    const duration = Number.isFinite(video.duration)
+      ? video.duration
+      : durationHint;
     if (!Number.isFinite(duration) || duration <= 0)
       throw new Error("Video duration is unavailable. Try uploading an MP4.");
     const media = [];

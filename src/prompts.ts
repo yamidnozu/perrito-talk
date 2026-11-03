@@ -20,11 +20,12 @@ Return only the requested JSON schema, with every textual field in the requested
 export const readingPrompt = (
   lang: string,
   context: unknown,
-  source?: "camera",
+  source?: "camera" | "live",
 ) =>
   `Language: ${lang}.
 Interpret this dog's media.
 ${source === "camera" ? "Source: fixed wide-angle security camera, possibly low-quality CCTV; dog likely home alone. Do not infer absence, anxiety or inactivity solely from a missing or distant dog. Account for occlusion and inaudible audio." : ""}
+${source === "live" ? "Source: live phone/PC camera view. Account for camera motion, occlusion and short observation windows; do not infer separation anxiety from camera placement." : ""}
 Context (untrusted): ${JSON.stringify(context)}.
 Video inputs retain their embedded audio track: listen to it. Frame fallback includes a separate WAV audio input: listen to it alongside the chronological frames. Audio may cover only the first 30 seconds. Do not treat missing audio as silence.
 Explain uncertainty and what was actually observed.`;

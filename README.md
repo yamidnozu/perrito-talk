@@ -148,6 +148,40 @@ a summary containing mock readings remains a demo. A failed live request is
 reported rather than silently presented as successful analysis; Demo summary can
 summarize completed readings after a failure. Clips are not stored server-side.
 
+## Live mode / Modo en vivo
+
+Open Live mode, choose Front/Back, a 10–15 second interval (default 12), and a
+session budget (default 20, maximum 100). Press Start to grant camera/microphone
+permissions and optionally notifications. HTTPS is required on mobile. The muted,
+inline preview supports Chrome Android (WebM) and Safari iOS (MP4), selecting a
+supported MediaRecorder MIME type. Camera selection uses facingMode with an
+enumerateDevices/deviceId fallback. Keep the page visible; mobile browsers may
+suspend background recording. Stop releases all camera/microphone tracks.
+
+Each independently playable segment reuses `media.js`: MP4 ≤12 MB passes through;
+other video becomes four keyframes plus WAV. Recorded WebM uses the known segment
+length when its container omits duration. Requests use `source:"live"` and the
+phone/PC camera prompt. Recording continues while normalization/analysis runs;
+only one analysis runs at once, with busy segments dropped and marked. Attempts,
+including failures, consume the budget; reaching it stops the session.
+
+A 64×48 canvas samples motion every 500 ms and an AnalyserNode measures RMS.
+A segment is skipped only when both stay below constants in `live-logic.js`
+(mean RGB difference 0.025, RMS 0.02). The first frame is conservatively active.
+Quiet skips appear in the bounded timeline. The overlay shows interpretation,
+confidence, evidence and vocalization. Camera heuristics supply anxiety, repeated
+barking and veterinary alerts; distress vocalizations also warn. The banner always
+appears for a new warning or escalation; permitted notifications and supported
+vibration supplement it. Alerts deduplicate by type/severity per session. Demo
+readings are labeled and do not trigger device notifications. These observations
+do not establish continuous barking or a diagnosis. Live sessions are not saved
+to the diary automatically.
+
+En Modo en vivo, elige cámara, intervalo y máximo de análisis; pulsa Iniciar y
+permite cámara/micrófono. Detener libera ambos. Se omiten segmentos sin movimiento
+ni sonido y se descartan los que llegan durante un análisis. Las alertas aparecen
+en pantalla; las notificaciones requieren permiso. Se necesita HTTPS en móviles.
+
 ## Limitations, privacy and ethics
 
 Media is **not stored server-side** by this application. For live analysis it passes through the Worker to Meta; generated card text and compact diary entries also go to Meta when explicitly requested. Provider processing/retention is governed by the provider's terms. Request bodies, model output and keys are not logged by application code. Workers observability can record request metadata. Diary thumbnails and readings remain in this browser's localStorage until cleared; original recordings are not persisted by the app. Clear diary deletes local entries. No analytics, external fonts or third-party frontend assets are loaded.
@@ -156,6 +190,7 @@ This is a hackathon prototype: add authentication, per-user quotas/rate limiting
 
 ## Roadmap
 
+- Meta realtime/streaming API, if available and authorized, to replace live segment polling.
 - [LAN RTSP bridge](docs/camera-bridge.md), motion-triggered segmentation and timestamped aggregation.
 - Evaluate vocalization accuracy against labeled clips and improve empirical confidence calibration.
 - Authentication, quotas and abuse controls; optional Muse realtime after streaming validation.

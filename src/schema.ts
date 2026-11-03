@@ -78,7 +78,7 @@ export const patternSchema = object({
   vet_note: str,
 });
 export type AnalyzeInput = {
-  source?: "camera";
+  source?: "camera" | "live";
   lang: "en" | "es";
   context: { breed?: string; age?: string; situation?: string };
   media: {
@@ -109,7 +109,7 @@ export function validateAnalyze(value: unknown): AnalyzeInput {
       val.length > 1000
     )
       throw new ValidationError("Invalid context.");
-  if (v.source !== undefined && v.source !== "camera")
+  if (v.source !== undefined && v.source !== "camera" && v.source !== "live")
     throw new ValidationError("Invalid source.");
   let bytes = 0;
   for (const m of v.media) {

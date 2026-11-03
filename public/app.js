@@ -1,9 +1,11 @@
+import { mountLive } from "./live.js";
 import { cameraHeuristics, mergeAlerts } from "./camera-heuristics.js";
 import { normalize, loadImage } from "./media.js";
 const $ = (id) => document.getElementById(id);
 const words = {
   en: {
     cameraMode: "Camera mode",
+    liveMode: "Live mode",
     cameraHelp:
       "Upload up to 8 security-camera clips. Times default to file modification time; edit to match recording time. Gaps are unobserved.",
     cameraRun: "Analyze clips",
@@ -109,6 +111,7 @@ const words = {
   es: {
     read: "Entender a mi perro",
     cameraMode: "Modo cámara",
+    liveMode: "Modo en vivo",
     cameraHelp:
       "Sube hasta 8 clips de seguridad. La hora predeterminada es la modificación del archivo; ajústala a la grabación. Los intervalos no se observan.",
     cameraRun: "Analizar clips",
@@ -279,6 +282,7 @@ function setLanguage() {
   $("mode").textContent = t(live ? "live" : "mock");
   if (current) renderResult(current);
   renderDiary();
+  document.dispatchEvent(new Event("live-language"));
 }
 $("language").onclick = () => {
   lang = lang === "en" ? "es" : "en";
@@ -288,18 +292,21 @@ $("language").onclick = () => {
   setLanguage();
 };
 
-function tab(diary, camera = false) {
+function tab(diary, camera = false, realtime = false) {
+  $("liveView").hidden = !realtime;
+  $("liveTab").classList.toggle("active", realtime);
   $("cameraView").hidden = !camera;
   $("cameraTab").classList.toggle("active", camera);
-  $("reader").hidden = diary || camera;
+  $("reader").hidden = diary || camera || realtime;
   $("diaryView").hidden = !diary;
-  $("readTab").classList.toggle("active", !diary && !camera);
+  $("readTab").classList.toggle("active", !diary && !camera && !realtime);
   $("diaryTab").classList.toggle("active", diary);
   if (diary) renderDiary();
 }
 $("readTab").onclick = () => tab(false);
 $("diaryTab").onclick = () => tab(true);
 $("cameraTab").onclick = () => tab(false, true);
+$("liveTab").onclick = () => tab(false, false, true);
 
 function lock(value) {
   busy = value;
@@ -1063,3 +1070,5 @@ $("cameraStream").onclick = async () => {
     $("cameraProgress").textContent = t("error");
   }
 };
+
+mountLive({ getLang: () => lang, api });
