@@ -195,7 +195,9 @@ export function createVideoRing(
         });
         await pending;
         if (closed || failed) return null;
-        if (fragments.some((fragment) => fragment.at >= triggerTime + 6000))
+        // Fragments are ~1 s; one that started within the last second of the
+        // window has been delivered complete, so the window end is covered.
+        if (fragments.some((fragment) => fragment.at >= triggerTime + 5000))
           break;
         await new Promise((resolve) => setTimeout(resolve, 50));
       } while (now() < deadline);

@@ -146,9 +146,10 @@ export const PARAMETERS = {
   evaluationWindowMs: 12000,
   heartbeatMinutes: 0,
   // Engineering decisions (measured on a real still dog: no reading ever fired).
-  // First reading once presence holds for stableMs; the clip then uses 8 s of
-  // pre-roll + postMs, so the reading starts ~3.5 s after detection.
-  firstLook: { stableMs: 1500, postMs: 2000 },
+  // First reading once presence holds for stableMs; the clip then uses 9 s of
+  // pre-roll + postMs, so the request starts ~2.5 s after detection (target:
+  // reading < 15 s with ~10 s model latency).
+  firstLook: { stableMs: 1000, postMs: 1000 },
   // Check-in reading while the dog stays present, even with no change (0 = off).
   checkinSeconds: 50,
   // Client timeout per AI attempt; one retry, then a visible error.

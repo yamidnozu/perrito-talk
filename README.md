@@ -283,7 +283,7 @@ storage to reset profiles. HNR/nonlinear whine analysis remains experimental.
 
 **First look, check-ins and “Analyze now”.** A still dog never changes state, so
 the watcher no longer waits for a change: once the detector has held the dog for
-1.5 s it fires a `first_look` reading (2 s post-roll), then a `checkin` reading
+1 s it fires a `first_look` reading (1 s post-roll), then a `checkin` reading
 every 50 s while the dog stays present, plus a big **Analizar ahora** button
 (`manual`). These count against the budget, so the savings counter stays honest.
 A status line always shows the current step (watching with sound/motion vs gates →
@@ -406,7 +406,7 @@ dog accuracy, and Bow-wow label quality.
 | Per-dog relative features                      | Ten bark windows minimum; 25th/75th percentiles, bounded 128-window history                       |
 | Spike / baseline                               | 2.5× baseline, .02 floor, 6 s persistence; baseline exponential weight .02                        |
 | Trigger cooldowns                              | State 20 s, voice start 30 s, sustained 60 s, enter/exit 30 s, spike 45 s, check-in 30 s          |
-| Global gap / first look / check-in / timeout   | 8 s; first look after 1.5 s stable presence; check-in 50 s; 30 s per attempt, 1 retry             |
+| Global gap / first look / check-in / timeout   | 8 s; first look after 1 s stable presence; check-in 50 s; 30 s per attempt, 1 retry               |
 | Motion proxy gates                             | Active enter .05 / exit .03; high-motion proxy enter .25 / exit .15; tuned so small dogs register |
 | Presence persistence / calibration warmup      | 1.5 s object-hit hold; up to 10 s initial calibration wait                                        |
 | Acoustic fallback classes                      | Low-certainty engineering gates in `PARAMETERS.acoustic`; independent validation pending          |
