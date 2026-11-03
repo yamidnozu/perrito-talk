@@ -2,7 +2,7 @@
 
 Big feelings. Little clues. A mobile-first bilingual dog-behavior interpreter built for the **Meta Model API Hackathon**.
 
-Demo URL (deployment target): **https://perritos.edevcore.com**. This repository does not imply the site has been deployed.
+Live demo: **https://perritos.edevcore.com**.
 
 Dogs communicate through a combination of sounds, posture and movement. PerritoTalk helps caregivers explore those signals with conservative interpretations and practical next steps. **Interpretation, not a diagnosis.** It cannot reliably infer a dog's internal state or replace a qualified veterinarian or behavior professional. Seek urgent veterinary care for emergencies.
 
@@ -13,7 +13,7 @@ Dogs communicate through a combination of sounds, posture and movement. PerritoT
 - Warm, responsive design, dark-mode support, accessible controls and reduced-motion support.
 - Structured readings: possible needs, confidence, observed signals, translated first-person phrase, next steps and veterinary alerts.
 - Local dog diary (latest 100 readings), thumbnails, need frequency and time-of-day bars; ask Muse about patterns.
-- Muse Image share cards with a browser canvas fallback, PNG download and native Web Share where supported.
+- Muse Image share cards with a browser canvas fallback, JPEG download (PNG for canvas fallback) and native Web Share where supported.
 - Optional browser text-to-speech. A bundled original SVG dog powers the sample demo.
 
 ## How it uses Meta
@@ -22,9 +22,20 @@ The Worker calls `https://api.meta.ai/v1/responses` with **Muse Spark (`muse-spa
 
 Browser codec support varies. If a video container's audio cannot be decoded, the UI explicitly reports that only frames will be analyzed; upload audio separately when needed. Videos with unreadable duration/codecs require an MP4 export. Camera and microphone require HTTPS or localhost and browser permission.
 
-Diary pattern analysis uses the same structured Responses API. Cards use **Muse Image (`muse-image-1.0`)** at `/v1/images/generations`, returning a 1024×1024 PNG. Image generation failure falls back to local canvas. Analysis failures return a safe 502 instead of silently presenting mock content as live.
+Diary pattern analysis uses the same structured Responses API. Cards use **Muse Image (`muse-image-1.0`)** at `/v1/images/generations`, returning a 1024×1024 JPEG. Image generation failure falls back to local canvas. Analysis failures return a safe 502 instead of silently presenting mock content as live.
 
 Without `MODEL_API_KEY`, or with `?mock=1`, the APIs return explicitly marked deterministic demos. Door/puerta context yields wants-out, limp/cojea/pain context yields a pain warning. Mock outputs never claim the uploaded content was inspected. Demo diary entries are marked as such and sent with their mode during pattern analysis. The live/mock health badge shows backend availability; each result has its own provenance badge.
+
+## Verified live
+
+Video (MP4 `input_video`), audio (`input_audio` WAV), image, structured output, and Muse Image have all been verified live against `api.meta.ai`.
+
+## Screenshots
+
+Placeholders; screenshot files will be added separately:
+
+![Mobile app screenshot](docs/screenshot-mobile.png)
+![Generated share card example](docs/card-example.png)
 
 ## Architecture
 
@@ -84,6 +95,6 @@ npm run deploy
 
 Media is **not stored server-side** by this application. For live analysis it passes through the Worker to Meta; generated card text and compact diary entries also go to Meta when explicitly requested. Provider processing/retention is governed by the provider's terms. Request bodies, model output and keys are not logged by application code. Workers observability can record request metadata. Diary thumbnails and readings remain in this browser's localStorage until cleared; original recordings are not persisted by the app. Clear diary deletes local entries. No analytics, external fonts or third-party frontend assets are loaded.
 
-This is a hackathon prototype: add authentication, per-user quotas/rate limiting and abuse controls before exposing a funded API key widely. Confidence is model-reported and uncalibrated. Image-generated text may be imperfect. A language toggle changes interface labels; existing reading phrases stay in the language in which they were generated. Live Meta integration requires an authorized API key and was not exercised by offline tests.
+This is a hackathon prototype: add authentication, per-user quotas/rate limiting and abuse controls before exposing a funded API key widely. Confidence is model-reported and uncalibrated. Image-generated text may be imperfect. A language toggle changes interface labels; existing reading phrases stay in the language in which they were generated. Live Meta integration requires an authorized API key; offline tests do not call Meta.
 
 MIT © 2026 Yamid Nozu / eDev Core.

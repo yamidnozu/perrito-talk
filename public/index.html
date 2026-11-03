@@ -1,13 +1,214 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#f7f1e8"><title>PerritoTalk — A little closer to your best friend</title><meta name="description" content="Understand your dog's signals with Muse Spark. A playful interpretation, never a diagnosis."><meta property="og:title" content="PerritoTalk 🐾"><meta property="og:description" content="Big feelings. Little clues. Get a little closer to your best friend."><meta property="og:url" content="https://perritos.edevcore.com"><meta property="og:type" content="website"><meta property="og:image" content="https://perritos.edevcore.com/sample.svg"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
-<body><header class="wrap"><a class="brand" href="/" aria-label="PerritoTalk home"><span class="brand-icon">🐾</span>Perrito<span>Talk</span></a><div class="header-right"><span class="model" id="mode">Muse Spark</span><button id="language" aria-label="Switch language">ES</button></div></header>
-<main class="wrap"><nav aria-label="Main"><button id="readTab" class="active" data-i18n="read">Read my dog</button><button id="diaryTab" data-i18n="diary">Dog diary</button></nav>
-<section id="reader"><div class="hero"><div><div class="eyebrow" data-i18n="eyebrow">A LITTLE CLOSER. A LITTLE MORE WOOF.</div><h1 data-i18n="headline">Big feelings.<br>Little clues.</h1><p data-i18n="intro">That bark. That head tilt. That look. Explore what your best friend might be telling you.</p><div class="hero-note"><span>✦</span> <span data-i18n="powered">A new kind of conversation, powered by Muse Spark</span></div></div><div class="dog-art"><span class="orbit orbit-one">♡</span><img src="/sample.svg" alt="Illustration of a friendly brown dog"><span class="dog-bubble" data-i18n="dogbubble">“You get me.”</span><span class="orbit orbit-two">✦</span></div></div>
-<div class="workspace"><section class="panel upload-panel"><div class="section-title"><span class="step">01</span><h2 data-i18n="shareMoment">Share a little moment</h2></div><div id="drop" class="dropzone"><span class="upload-icon">↥</span><h3 data-i18n="uploadTitle">A woof is worth a thousand words.</h3><p data-i18n="formats">Photo, video or audio. We'll handle the little details.</p><label class="button primary" for="file" data-i18n="choose">Choose a moment</label><input id="file" type="file" accept="image/*,video/*,audio/*" class="sr-only"><small data-i18n="limits">Images · MP4 video up to 12 MB · Audio up to 30 seconds</small></div><div class="record-row"><button id="recordVideo" data-i18n="recordVideo">◉ Record video</button><button id="recordAudio" data-i18n="recordAudio">♫ Record audio</button><button id="stopRecord" hidden data-i18n="stop">■ Stop</button></div><video id="camera" muted playsinline hidden></video><div id="preview" hidden></div><details><summary data-i18n="contextTitle">A little context helps <span>optional +</span></summary><div class="context-grid"><label><span data-i18n="breed">Breed</span><input id="breed" maxlength="100" placeholder="e.g. Beagle"></label><label><span data-i18n="age">Age</span><input id="age" maxlength="80" placeholder="e.g. 3 years"></label><label class="full"><span data-i18n="situation">What's happening?</span><textarea id="situation" maxlength="1000" rows="2" placeholder="e.g. Waiting by the door after dinner"></textarea></label></div></details><button id="analyze" class="button primary analyze" disabled data-i18n="analyze">Translate this moment ✦</button><button id="sample" class="sample" data-i18n="sample">Just curious? Try a sample →</button></section>
-<aside class="panel welcome" id="welcome"><div class="mini-paws">🐾</div><div class="eyebrow" data-i18n="listen">LET'S LISTEN A LITTLE CLOSER</div><h2 data-i18n="welcomeTitle">Their world.<br>In a few words.</h2><p data-i18n="welcomeText">Share a moment to explore body language, possible needs, and thoughtful next steps.</p><div class="feature-pills"><span data-i18n="bodyLanguage">↗ Body language</span><span data-i18n="voice">♫ Voice & sounds</span><span data-i18n="care">♡ Better care</span></div><div class="note" data-i18n="disclaimer">Interpretation, not a diagnosis. Your dog is wonderfully complex; context and a veterinarian still matter.</div></aside>
-<section class="panel result" id="result" hidden aria-live="polite"></section></div></section>
-<section id="diaryView" hidden><div class="diary-heading"><div><div class="eyebrow" data-i18n="littleMoments">LITTLE MOMENTS, BIGGER PICTURE</div><h1 data-i18n="diaryTitle">Your dog's story.</h1></div><button id="clearDiary" data-i18n="clear">Clear diary</button></div><p data-i18n="localOnly">Saved only in this browser. A little journal of your life together.</p><div class="panel" id="stats"></div><button id="patterns" class="button primary" data-i18n="patterns">Ask Muse about patterns ✦</button><div id="patternResult" class="panel" hidden aria-live="polite"></div><div id="timeline"></div></section>
-<div id="status" role="status" aria-live="polite"></div><p id="error" role="alert" hidden></p></main>
-<footer class="wrap"><span>PerritoTalk <span class="heart">♡</span> Meta Model API Hackathon</span><span data-i18n="footer">Made for the love of dogs. Interpretation, not a diagnosis.</span></footer>
-<dialog id="cardDialog"><button id="closeCard" class="close" aria-label="Close">×</button><h2 data-i18n="cardTitle">A little woof to keep.</h2><img id="cardImage" alt="Shareable illustrated dog card"><div class="record-row"><a id="download" class="button primary" download="perritotalk.png" data-i18n="download">Download</a><button id="share" data-i18n="share">Share</button></div><p id="cardMode"></p></dialog>
-</body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f1e8" />
+    <title>PerritoTalk — A little closer to your best friend</title>
+    <meta
+      name="description"
+      content="Understand your dog's signals with Muse Spark. A playful interpretation, never a diagnosis."
+    />
+    <meta property="og:title" content="PerritoTalk 🐾" />
+    <meta
+      property="og:description"
+      content="Big feelings. Little clues. Get a little closer to your best friend."
+    />
+    <meta property="og:url" content="https://perritos.edevcore.com" />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:image"
+      content="https://perritos.edevcore.com/sample.svg"
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="wrap">
+      <a class="brand" href="/" aria-label="PerritoTalk home"
+        ><span class="brand-icon">🐾</span>Perrito<span>Talk</span></a
+      >
+      <div class="header-right">
+        <span class="model" id="mode">Muse Spark</span
+        ><button id="language" aria-label="Switch language">ES</button>
+      </div>
+    </header>
+    <main class="wrap">
+      <nav aria-label="Main">
+        <button id="readTab" class="active" data-i18n="read">Read my dog</button
+        ><button id="diaryTab" data-i18n="diary">Dog diary</button>
+      </nav>
+      <section id="reader">
+        <div class="hero">
+          <div>
+            <div class="eyebrow" data-i18n="eyebrow">
+              A LITTLE CLOSER. A LITTLE MORE WOOF.
+            </div>
+            <h1 data-i18n="headline">Big feelings.<br />Little clues.</h1>
+            <p data-i18n="intro">
+              That bark. That head tilt. That look. Explore what your best
+              friend might be telling you.
+            </p>
+            <div class="hero-note">
+              <span>✦</span>
+              <span data-i18n="powered"
+                >A new kind of conversation, powered by Muse Spark</span
+              >
+            </div>
+          </div>
+          <div class="dog-art">
+            <span class="orbit orbit-one">♡</span
+            ><img
+              src="/sample.svg"
+              alt="Illustration of a friendly brown dog"
+            /><span class="dog-bubble" data-i18n="dogbubble">“You get me.”</span
+            ><span class="orbit orbit-two">✦</span>
+          </div>
+        </div>
+        <div class="workspace">
+          <section class="panel upload-panel">
+            <div class="section-title">
+              <span class="step">01</span>
+              <h2 data-i18n="shareMoment">Share a little moment</h2>
+            </div>
+            <div id="drop" class="dropzone">
+              <span class="upload-icon">↥</span>
+              <h3 data-i18n="uploadTitle">A woof is worth a thousand words.</h3>
+              <p data-i18n="formats">
+                Photo, video or audio. We'll handle the little details.
+              </p>
+              <label class="button primary" for="file" data-i18n="choose"
+                >Choose a moment</label
+              ><input
+                id="file"
+                type="file"
+                accept="image/*,video/*,audio/*"
+                class="sr-only"
+              /><small data-i18n="limits"
+                >Images · MP4 video up to 12 MB · Audio up to 30 seconds</small
+              >
+            </div>
+            <div class="record-row">
+              <button id="recordVideo" data-i18n="recordVideo">
+                ◉ Record video</button
+              ><button id="recordAudio" data-i18n="recordAudio">
+                ♫ Record audio</button
+              ><button id="stopRecord" hidden data-i18n="stop">■ Stop</button>
+            </div>
+            <video id="camera" muted playsinline hidden></video>
+            <div id="preview" hidden></div>
+            <details>
+              <summary data-i18n="contextTitle">
+                A little context helps <span>optional +</span>
+              </summary>
+              <div class="context-grid">
+                <label
+                  ><span data-i18n="breed">Breed</span
+                  ><input
+                    id="breed"
+                    maxlength="100"
+                    placeholder="e.g. Beagle" /></label
+                ><label
+                  ><span data-i18n="age">Age</span
+                  ><input
+                    id="age"
+                    maxlength="80"
+                    placeholder="e.g. 3 years" /></label
+                ><label class="full"
+                  ><span data-i18n="situation">What's happening?</span
+                  ><textarea
+                    id="situation"
+                    maxlength="1000"
+                    rows="2"
+                    placeholder="e.g. Waiting by the door after dinner"
+                  ></textarea>
+                </label>
+              </div>
+            </details>
+            <button
+              id="analyze"
+              class="button primary analyze"
+              disabled
+              data-i18n="analyze"
+            >
+              Translate this moment ✦</button
+            ><button id="sample" class="sample" data-i18n="sample">
+              Just curious? Try a sample →
+            </button>
+          </section>
+          <aside class="panel welcome" id="welcome">
+            <div class="mini-paws">🐾</div>
+            <div class="eyebrow" data-i18n="listen">
+              LET'S LISTEN A LITTLE CLOSER
+            </div>
+            <h2 data-i18n="welcomeTitle">Their world.<br />In a few words.</h2>
+            <p data-i18n="welcomeText">
+              Share a moment to explore body language, possible needs, and
+              thoughtful next steps.
+            </p>
+            <div class="feature-pills">
+              <span data-i18n="bodyLanguage">↗ Body language</span
+              ><span data-i18n="voice">♫ Voice & sounds</span
+              ><span data-i18n="care">♡ Better care</span>
+            </div>
+            <div class="note" data-i18n="disclaimer">
+              Interpretation, not a diagnosis. Your dog is wonderfully complex;
+              context and a veterinarian still matter.
+            </div>
+          </aside>
+          <section
+            class="panel result"
+            id="result"
+            hidden
+            aria-live="polite"
+          ></section>
+        </div>
+      </section>
+      <section id="diaryView" hidden>
+        <div class="diary-heading">
+          <div>
+            <div class="eyebrow" data-i18n="littleMoments">
+              LITTLE MOMENTS, BIGGER PICTURE
+            </div>
+            <h1 data-i18n="diaryTitle">Your dog's story.</h1>
+          </div>
+          <button id="clearDiary" data-i18n="clear">Clear diary</button>
+        </div>
+        <p data-i18n="localOnly">
+          Saved only in this browser. A little journal of your life together.
+        </p>
+        <div class="panel" id="stats"></div>
+        <button id="patterns" class="button primary" data-i18n="patterns">
+          Ask Muse about patterns ✦
+        </button>
+        <div id="patternResult" class="panel" hidden aria-live="polite"></div>
+        <div id="timeline"></div>
+      </section>
+      <div id="status" role="status" aria-live="polite"></div>
+      <p id="error" role="alert" hidden></p>
+    </main>
+    <footer class="wrap">
+      <span
+        >PerritoTalk <span class="heart">♡</span> Meta Model API Hackathon</span
+      ><span data-i18n="footer"
+        >Made for the love of dogs. Interpretation, not a diagnosis.</span
+      >
+    </footer>
+    <dialog id="cardDialog">
+      <button id="closeCard" class="close" aria-label="Close">×</button>
+      <h2 data-i18n="cardTitle">A little woof to keep.</h2>
+      <img id="cardImage" alt="Shareable illustrated dog card" />
+      <div class="record-row">
+        <a
+          id="download"
+          class="button primary"
+          download="perritotalk.png"
+          data-i18n="download"
+          >Download</a
+        ><button id="share" data-i18n="share">Share</button>
+      </div>
+      <p id="cardMode"></p>
+    </dialog>
+  </body>
+</html>
