@@ -5,6 +5,8 @@ import {
   shouldAnalyze,
   reserveAnalysis,
   newAlerts,
+  preliminarySummary,
+  selectLiveMedia,
   MOTION_THRESHOLD,
   RMS_THRESHOLD,
 } from "../public/live-logic.js";
@@ -57,6 +59,54 @@ describe("session reservations and notifications", () => {
     expect(newAlerts([urgent], seen)).toEqual([urgent]);
     expect(newAlerts([warning], seen)).toEqual([]);
     expect(newAlerts([warning], new Map())).toEqual([warning]);
+  });
+});
+describe("preliminary local observation", () => {
+  const meta = (over = {}) => ({
+    dog_present: true,
+    observations: { activity: "still", vocal_type: "bark" },
+    ...over,
+  });
+  it("describes presence, activity and sound in Spanish without percentages", () => {
+    const p = preliminarySummary(meta(), "es");
+    expect(p.badge).toMatch(/preliminar/i);
+    expect(p.title).toBe("Quieto");
+    expect(p.lines.join(" ")).toContain("Perro a la vista");
+    expect(p.lines.join(" ")).toContain("ladrido");
+    expect(JSON.stringify(p)).not.toContain("%");
+    expect(p.note).toMatch(/no afirma/i);
+    for (const word of ["feliz", "ansioso", "triste", "miedo", "celoso"])
+      expect(JSON.stringify(p).toLowerCase()).not.toContain(word);
+  });
+  it("marks unknown presence and silence honestly in both languages", () => {
+    const es = preliminarySummary(
+      meta({ dog_present: null, observations: { activity: "unknown", vocal_type: "none" } }),
+      "es",
+    );
+    expect(es.lines.join(" ")).toContain("sin confirmar");
+    expect(es.lines.join(" ")).toContain("Sin vocalización");
+    const en = preliminarySummary(
+      meta({ dog_present: false, observations: { activity: "restless", vocal_type: "howl" } }),
+      "en",
+    );
+    expect(en.title).toBe("Much movement");
+    expect(en.lines.join(" ")).toContain("howl");
+  });
+});
+describe("live upload payload", () => {
+  const media = [
+    { kind: "image", mime: "image/jpeg", data_b64: "AAAA" },
+    { kind: "image", mime: "image/jpeg", data_b64: "AAAA" },
+    { kind: "audio", mime: "audio/wav", data_b64: "AAAA" },
+    { kind: "video", mime: "video/mp4", data_b64: "AAAA" },
+  ];
+  it("drops keyframes when native video is present, keeps the audio track", () => {
+    const out = selectLiveMedia(media);
+    expect(out.map((m) => m.kind).sort()).toEqual(["audio", "video"]);
+  });
+  it("keeps frames when there is no native video fallback", () => {
+    const out = selectLiveMedia(media.filter((m) => m.kind !== "video"));
+    expect(out.map((m) => m.kind).sort()).toEqual(["audio", "image", "image"]);
   });
 });
 it("accepts live source and describes phone/PC evidence without replacing audio instructions", () => {
