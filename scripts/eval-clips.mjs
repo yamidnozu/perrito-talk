@@ -105,6 +105,7 @@ for (const name of (await readdir(dir))
         "base64",
       ),
     });
+  const t0 = Date.now();
   const response = await fetch(
     new URL("/api/analyze", process.env.PERRITO_URL),
     {
@@ -120,6 +121,7 @@ for (const name of (await readdir(dir))
     },
   );
   const result = await response.json();
+  console.error(`api_ms ${name} ${Date.now() - t0}`);
   await writeFile(
     join(outDir, `${parse(name).name}.json`),
     JSON.stringify(result, null, 2) + "\n",
