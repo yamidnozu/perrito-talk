@@ -9,6 +9,8 @@ Dogs communicate through a combination of sounds, posture and movement. PerritoT
 ## Features
 
 - Upload a photo, video or audio; record camera/microphone clips with a 30-second automatic stop.
+- Live mode: phone/PC camera and microphone, bounded sessions, motion/audio gating and distress alerts.
+- Client-side acoustic hints for upload, camera and live recordings.
 - Camera mode: batch 1–8 timestamped CCTV exports, timeline, evidence-based alerts and optional diary saving.
 - English/Spanish interface, defaulting to browser language, with a persistent toggle.
 - Warm, responsive design, dark-mode support, accessible controls and reduced-motion support.
@@ -21,11 +23,46 @@ Dogs communicate through a combination of sounds, posture and movement. PerritoT
 
 The Worker calls `https://api.meta.ai/v1/responses` with **Muse Spark (`muse-spark-1.3`)**, multimodal image/video/audio content, conservative system instructions, low reasoning effort, and a strict JSON schema. MP4 includes embedded audio. Image inputs become JPEGs up to 1024 px. MP4 videos up to 12 MB pass through; other or larger video becomes four chronological JPEG frames up to 768 px plus mono 16 kHz WAV audio (first 30 seconds). Audio uploads and recordings become mono 16 kHz WAV, capped at 30 seconds. Maximum decoded media per request: 15 MB; maximum HTTP JSON body: 21 MB; maximum source file: 100 MB.
 
+Muse Spark 1.3 has a documented audio-understanding caveat: our dog clips often return `NO_AUDIO`, including standalone WAV tests with 1.2 and 1.3. `public/acoustics.js` supplements the model with heuristic RMS, autocorrelation pitch and tonal-run hints from mono 16 kHz PCM (30 ms frames / 15 ms hop). Hints distinguish silence, music/noise, howl, whine/whimper, bark and unclear; they are not proof or a diagnosis. The UI displays a small `🔊 heard` chip. Confident dog-sound hints guide vocalization, evidence, labels and phrases; calm labels conflicting with howl/whine hints are flagged and capped at 0.39. Direct MP4 decoding failures omit hints while retaining embedded audio.
+
+The strict `rms > max(0.02, p60)` activity gate can miss constant-level synthetic tones; tone tests include quiet context.
+
 Browser codec support varies. If a video container's audio cannot be decoded, analysis stops rather than silently sending frames alone; export an MP4 with audio under 12 MB or upload WAV separately. Videos with unreadable duration/codecs require an MP4 export. Camera and microphone require HTTPS or localhost and browser permission.
 
 Diary pattern analysis uses the same structured Responses API. Cards use **Muse Image (`muse-image-1.0`)** at `/v1/images/generations`, returning a 1024×1024 JPEG. Image generation failure falls back to local canvas. Analysis failures return a safe 502 instead of silently presenting mock content as live.
 
 Without `MODEL_API_KEY`, or with `?mock=1`, the APIs return explicitly marked deterministic demos. Door/puerta context yields wants-out, limp/cojea/pain context yields a pain warning. Mock outputs never claim the uploaded content was inspected. Demo diary entries are marked as such and sent with their mode during pattern analysis. The live/mock health badge shows backend availability; each result has its own provenance badge.
+
+## Setup, run and test
+
+Requires Node.js 22+ and npm. There is no frontend framework, bundler or build step.
+
+```bash
+npm install
+cp .dev.vars.example .dev.vars
+# Set MODEL_API_KEY in .dev.vars for live mode; leave empty for demo.
+npm run dev -- --port 8787
+```
+
+Open `http://localhost:8787`. Try a sample always runs mock, even with a live key. Optional `.env.example` documents the key for other tooling; local Wrangler secrets belong in `.dev.vars`. Never put keys in `/public`.
+
+```bash
+npm run typecheck
+npm test
+npx wrangler deploy --dry-run
+curl http://localhost:8787/api/health
+curl 'http://localhost:8787/api/analyze?mock=1' \
+  -H 'Content-Type: application/json' \
+  --data '{"lang":"en","context":{"situation":"waiting by the door"},"media":[{"kind":"image","mime":"image/jpeg","data_b64":"/9j/2Q=="}]}'
+```
+
+The curl image is a minimal validation fixture, not a usable live photograph. Tests cover validation, deterministic mocks, structured response extraction and router behavior without network calls.
+
+Evaluate a clip directory against a running endpoint (requires ffmpeg); writes `results/<name>.json`:
+
+```bash
+PERRITO_URL=http://localhost:8787 node scripts/eval-clips.mjs /path/to/clips
+```
 
 ## Screenshots
 
@@ -63,41 +100,19 @@ src/
   stream.ts      Planned streaming contract (501)
 public/
   app.js         Bilingual UI, recordings, diary and camera workflow
-  media.js       Image/video normalization and WAV encoding
+  media.js       Image/video normalization, WAV encoding and acoustic hints
+  acoustics.js   Pure PCM acoustic classifier, shared with clip evaluation
+  live.js        Live camera/microphone sessions and overlay
+  live-logic.js  Motion/audio gating and session budget rules
   camera-heuristics.js  Shared browser/server camera alert rules
   index.html     Accessible app shell
   style.css      Responsive styles
   *.svg          Original sample illustration and favicon
-tests/          Worker, schema, calibration and camera regression tests
-scripts/        Optional local RTSP bridge
+tests/          Worker, schema, acoustics, calibration, camera and live tests
+scripts/        eval-clips.mjs (ffmpeg evaluation), optional RTSP bridge
 docs/           Camera bridge guide, screenshots and CI workflow template
 wrangler.jsonc   Worker assets, domain and observability configuration
 ```
-
-## Setup, run and test
-
-Requires Node.js 22+ and npm. There is no frontend framework, bundler or build step.
-
-```bash
-npm install
-cp .dev.vars.example .dev.vars
-# Set MODEL_API_KEY in .dev.vars for live mode; leave empty for demo.
-npm run dev -- --port 8787
-```
-
-Open `http://localhost:8787`. Try a sample always runs mock, even with a live key. Optional `.env.example` documents the key for other tooling; local Wrangler secrets belong in `.dev.vars`. Never put keys in `/public`.
-
-```bash
-npm run typecheck
-npm test
-npx wrangler deploy --dry-run
-curl http://localhost:8787/api/health
-curl 'http://localhost:8787/api/analyze?mock=1' \
-  -H 'Content-Type: application/json' \
-  --data '{"lang":"en","context":{"situation":"waiting by the door"},"media":[{"kind":"image","mime":"image/jpeg","data_b64":"/9j/2Q=="}]}'
-```
-
-The curl image is a minimal validation fixture, not a usable live photograph. Tests cover validation, deterministic mocks, structured response extraction and router behavior without network calls.
 
 ## Deploy
 
@@ -114,14 +129,14 @@ npm run deploy
 
 All POST endpoints accept JSON; responses use `Cache-Control: no-store`. Add `?mock=1` for deterministic demos. Missing server credentials also select mock mode. Errors: 400 invalid input, 405 unsupported method, 502 upstream/invalid model output; unknown routes return 404.
 
-| Endpoint                   | Request                                         | Response                                                                                                                                                                                                                 |
-| -------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/health`          | None                                            | `ok`, `live`, `model`                                                                                                                                                                                                    |
-| `POST /api/analyze`        | `{lang, context, media, source?: "camera"}`     | `primary` (label, emoji, confidence, 1–4 evidence items), `secondary`, `signals`, `dog_says`, `explanation`, `what_to_do`, `vet_alert`, `media_observed`, `disclaimer`, `low_confidence`, `consistency_warnings`, `mode` |
-| `POST /api/patterns`       | `{lang, entries}` (1–100 compact diary entries) | `summary`, `patterns`, `tips`, `vet_note`, `mode`                                                                                                                                                                        |
-| `POST /api/card`           | `{lang, dog_says, label, emoji, dog_name?}`     | JPEG `b64_json`, `mime`, `mode`; or `{mode:"mock", fallback:true}`                                                                                                                                                       |
-| `POST /api/camera/summary` | `{lang, clips}` (1–8 timestamped readings)      | `overall`, `timeline`, `alerts`, `recommendations`, `mode`                                                                                                                                                               |
-| `POST /api/camera/stream`  | Reserved                                        | 501 streaming plan                                                                                                                                                                                                       |
+| Endpoint                   | Request                                         | Response                                                           |
+| -------------------------- | ----------------------------------------------- | ------------------------------------------------------------------ |
+| `GET /api/health`          | None                                            | `ok`, `live`, `model`                                              |
+| `POST /api/analyze`        | `{lang, context?, media, source?: "upload"      | "camera"                                                           | "live", acoustic_hints?}` | `primary` (label, emoji, confidence, 1–4 evidence items), `secondary`, `signals`, `dog_says`, `explanation`, `what_to_do`, `vet_alert`, `media_observed`, `disclaimer`, `low_confidence`, `consistency_warnings`, `mode` |
+| `POST /api/patterns`       | `{lang, entries}` (1–100 compact diary entries) | `summary`, `patterns`, `tips`, `vet_note`, `mode`                  |
+| `POST /api/card`           | `{lang, dog_says, label, emoji, dog_name?}`     | JPEG `b64_json`, `mime`, `mode`; or `{mode:"mock", fallback:true}` |
+| `POST /api/camera/summary` | `{lang, clips}` (1–8 timestamped readings)      | `overall`, `timeline`, `alerts`, `recommendations`, `mode`         |
+| `POST /api/camera/stream`  | Reserved                                        | 501 streaming plan                                                 |
 
 `lang` is `en` or `es`. Each media item is `{kind, mime, data_b64}`; 1–5 items, with supported types defined in `src/schema.ts`. `signals.vocalization` contains `type`, `present`, and a description with observed timing/duration; `bark` remains compatible. Vocalization keys: `none`, `bark`, `howl`, `whine` (whimper), `cry` (yelp), `growl`, `pant`, `human_voice_music_noise_only`. Below 0.4 confidence, the server forces `other`, a hedged phrase and the low-confidence badge; conflicting happy/resting labels with whining, crying or howling are capped at 0.39 and flagged. Veterinary alerts are preserved.
 
@@ -198,3 +213,8 @@ This is a hackathon prototype: add authentication, per-user quotas/rate limiting
 ## License
 
 [MIT](LICENSE) © 2026 Yamid Nozu / eDev Core.
+
+## Roadmap
+
+- Re-evaluate acoustic hints as Muse Spark audio understanding improves.
+- Explore Muse Voice for richer dog-sound interactions when available.

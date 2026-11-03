@@ -2,6 +2,7 @@ import { cameraHeuristics, mergeAlerts } from "../public/camera-heuristics.js";
 export { cameraHeuristics, mergeAlerts };
 import {
   labels,
+  type AcousticHints,
   matchesSchema,
   object,
   str,
@@ -42,11 +43,13 @@ export const cameraSummarySchema = object({
   recommendations: { type: "array", items: str },
 });
 export interface CameraClip {
+  acoustic_hints?: AcousticHints;
   ts: string;
   label: (typeof labels)[number];
   confidence: number;
   dog_says: string;
   signals: {
+    vocalization?: { present: boolean; type: string; description: string };
     bark: { present: boolean; description: string };
     tail: string;
     ears: string;

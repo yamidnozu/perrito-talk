@@ -1,5 +1,9 @@
 import { normalize } from "./media.js";
-import { cameraHeuristics, mergeAlerts } from "./camera-heuristics.js";
+import {
+  cameraHeuristics,
+  mergeAlerts,
+  alertTitle,
+} from "./camera-heuristics.js";
 import {
   frameDifference,
   rms,
@@ -42,10 +46,16 @@ export function mountLive({ getLang, api }) {
   }
   labels();
   document.addEventListener("live-language", labels);
-  function tick(text, ts = new Date().toISOString()) {
+  function tick(text, ts = new Date().toISOString(), skipped = false) {
     const li = document.createElement("li");
     li.textContent = `${new Date(ts).toLocaleTimeString()} · ${text}`;
-    $("liveTimeline").prepend(li);
+    li.dataset.ts = String(Date.parse(ts));
+    if (skipped) li.className = "live-skipped";
+    const timeline = $("liveTimeline");
+    const older = [...timeline.children].find(
+      (item) => Number(item.dataset.ts) < Date.parse(ts),
+    );
+    timeline.insertBefore(li, older || null);
     while ($("liveTimeline").children.length > 100)
       $("liveTimeline").lastChild.remove();
     return li;
@@ -71,11 +81,22 @@ export function mountLive({ getLang, api }) {
   window.addEventListener("pagehide", stop);
   async function submit(s, blob, motion, sound, ts) {
     if (!shouldAnalyze(motion, sound)) {
-      tick(tr("skipped (quiet)", "omitido (sin movimiento ni sonido)"), ts);
+      tick(
+        tr("skipped (quiet)", "omitido (sin movimiento ni sonido)"),
+        ts,
+        true,
+      );
       return;
     }
     if (!reserveAnalysis(s)) {
-      tick(tr("dropped (busy)", "descartado (ocupado)"), ts);
+      tick(
+        tr(
+          "skipped (previous still analyzing)",
+          "omitido (análisis anterior en curso)",
+        ),
+        ts,
+        true,
+      );
       return;
     }
     processing = true;
@@ -99,31 +120,44 @@ export function mountLive({ getLang, api }) {
         source: "live",
         context: {},
         media: normalized.media,
+        acoustic_hints: normalized.acoustic_hints,
       });
       if (active !== s) {
         row.textContent = tr("Stopped", "Detenido");
         return;
       }
       const demo = r.mode === "mock" ? tr(" · DEMO", " · DEMOSTRACIÓN") : "";
-      row.textContent = `${new Date(ts).toLocaleTimeString()} · ${r.primary.emoji} ${r.dog_says}${demo}`;
+      const label = r.primary.label.replaceAll("_", " ");
+      const confidence = `${Math.round(r.primary.confidence * 100)}%`;
+      row.textContent = `${new Date(ts).toLocaleTimeString()} · ${r.primary.emoji} · ${label} · ${r.dog_says} · ${confidence}${demo}`;
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = tr("Details", "Detalles");
+      const observed = document.createElement("p");
+      observed.textContent = r.media_observed;
+      details.append(summary, observed);
+      row.append(details);
       const overlay = $("liveOverlay");
       overlay.replaceChildren();
-      for (const text of [
-        `${r.primary.emoji} ${r.dog_says}${demo}`,
-        `${Math.round(r.primary.confidence * 100)}%${r.low_confidence || r.primary.confidence < 0.4 ? tr(" · Low confidence", " · Baja confianza") : ""}`,
-        ...r.primary.evidence.slice(0, 2),
-        r.signals.vocalization.description,
-      ]) {
-        const p = document.createElement("p");
-        p.textContent = text;
-        overlay.append(p);
-      }
-      if (r.low_confidence || r.primary.confidence < 0.4) {
-        const badge = document.createElement("span");
-        badge.className = "badge";
-        badge.textContent = tr("Low confidence", "Baja confianza");
-        overlay.append(badge);
-      }
+      const title = document.createElement("strong");
+      title.textContent = `${r.primary.emoji} ${label}${demo}`;
+      const badge = (text) => {
+        const chip = document.createElement("span");
+        chip.className = "badge";
+        chip.textContent = text;
+        return chip;
+      };
+      overlay.append(title, badge(confidence));
+      if (r.low_confidence || r.primary.confidence < 0.4)
+        overlay.append(badge(tr("Low confidence", "Baja confianza")));
+      const heard =
+        r.acoustic_hints?.class.replace("whine_whimper", "whine") ||
+        (r.signals.vocalization.present ? r.signals.vocalization.type : null);
+      const signals = [
+        ...(heard ? [`🔊 heard: ${heard}`] : []),
+        ...r.primary.evidence,
+      ];
+      for (const signal of signals.slice(0, 2)) overlay.append(badge(signal));
       s.clips.push({
         ts,
         label: r.primary.label,
@@ -155,10 +189,12 @@ export function mountLive({ getLang, api }) {
         s.seen,
       );
       for (const alert of alerts) {
-        const message = `${alert.evidence} ${alert.advice}${demo}`;
+        const message = `${alertTitle(alert.type, s.lang)} · ${alert.advice.split(/\r?\n/)[0]}${demo}`;
         $("liveBanner").hidden = false;
         $("liveBanner").textContent = message;
-        tick(message, ts);
+        const evidence = document.createElement("p");
+        evidence.textContent = alert.evidence;
+        details.append(evidence);
         if (r.mode !== "mock") {
           try {
             if (

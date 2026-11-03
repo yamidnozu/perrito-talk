@@ -1,3 +1,4 @@
+import { analyzeAcoustics } from "./acoustics.js";
 // Browser normalization preserves video audio or stops before submitting frames.
 const LIMIT = 30;
 export const b64 = (blob) =>
@@ -88,7 +89,9 @@ export async function wav(blob) {
     const n = Math.max(-1, Math.min(1, pcm[i]));
     view.setInt16(44 + i * 2, n < 0 ? n * 32768 : n * 32767, true);
   }
-  return new Blob([buffer], { type: "audio/wav" });
+  const out = new Blob([buffer], { type: "audio/wav" });
+  out.acoustic_hints = analyzeAcoustics(pcm);
+  return out;
 }
 const waitEvent = (el, event, timeout = 15000) =>
   new Promise((resolve, reject) => {
@@ -137,6 +140,7 @@ export async function normalize(file, durationHint = 0) {
         media: [
           { kind: "audio", mime: "audio/wav", data_b64: await b64(audio) },
         ],
+        acoustic_hints: audio.acoustic_hints,
         thumbnail: "/sample.svg",
         notice: "audio30",
       };
@@ -154,6 +158,12 @@ export async function normalize(file, durationHint = 0) {
     video.src = url;
     await ready;
     const thumbnail = `data:image/jpeg;base64,${await b64(await jpeg(video, 140))}`;
+    let audio;
+    try {
+      audio = await wav(file);
+    } catch {
+      /* Embedded audio remains available in direct MP4. */
+    }
     if (
       (file.type === "video/mp4" || /\.mp4$/i.test(file.name || "")) &&
       file.size <= 12 * 1024 * 1024
@@ -163,6 +173,7 @@ export async function normalize(file, durationHint = 0) {
           { kind: "video", mime: "video/mp4", data_b64: await b64(file) },
         ],
         thumbnail,
+        acoustic_hints: audio?.acoustic_hints,
         notice: "",
       };
     const duration = Number.isFinite(video.duration)
@@ -182,9 +193,8 @@ export async function normalize(file, durationHint = 0) {
       });
     }
     // Never submit silent frames after losing the source video's audio.
-    let audio;
     try {
-      audio = await wav(file);
+      if (!audio) audio = await wav(file);
     } catch {
       throw new Error(
         "Cannot decode video audio. Export an MP4 with audio (under 12 MB), or upload a WAV audio clip separately.",
@@ -196,7 +206,7 @@ export async function normalize(file, durationHint = 0) {
       data_b64: await b64(audio),
     });
     const notice = "framesAudio";
-    return { media, thumbnail, notice };
+    return { media, thumbnail, notice, acoustic_hints: audio.acoustic_hints };
   } finally {
     if (video) {
       video.removeAttribute("src");

@@ -6,20 +6,35 @@ export function cameraHeuristics(input) {
   );
   /** @type {{type:string, severity:string, evidence:string, advice:string}[]} */
   const alerts = [];
-  const anxious = (c) => ["anxious", "fear"].includes(c.label);
-  const pair = clips.findIndex(
-    (c, i) => i > 0 && anxious(c) && anxious(clips[i - 1]),
-  );
-  if (pair > 0)
+  const voices = (c) => [
+    ...(c.signals.vocalization?.present ? [c.signals.vocalization.type] : []),
+    ...(c.acoustic_hints?.confidence >= 0.5 ? [c.acoustic_hints.class] : []),
+  ];
+  const anxious = (c) =>
+    ["anxious", "fear", "wants_out"].includes(c.label) ||
+    voices(c).some((v) =>
+      ["whine", "whimper", "whine_whimper", "cry", "howl"].includes(v),
+    );
+  let run = [],
+    longest = [];
+  for (const c of clips) {
+    run = anxious(c) ? [...run, c] : [];
+    if (run.length > longest.length) longest = run;
+  }
+  if (longest.length >= 2)
     alerts.push({
       type: "separation_anxiety",
-      severity: "warning",
-      evidence: `${clips[pair - 1].ts} — ${clips[pair].ts}: ${es ? "Dos lecturas consecutivas de ansiedad o miedo; posible ansiedad por separación, sin confirmar." : "Two consecutive anxious/fear readings; possible separation anxiety, unconfirmed."}`,
+      severity: longest.length >= 4 ? "urgent" : "warning",
+      evidence: `${longest[0].ts} — ${longest[longest.length - 1].ts}: ${longest.length} ${es ? "clips consecutivos con quejidos, llanto, aullidos o ansiedad/miedo/deseo de salir; posible ansiedad por separación, sin confirmar." : "consecutive clips with whining, crying, howling or anxious/fear/wants_out labels; possible separation anxiety, unconfirmed."}`,
       advice: es
         ? "Comprueba cómo está y consulta a un profesional si se repite."
         : "Check on your dog and consult a professional if this repeats.",
     });
-  const barks = clips.filter((c) => c.signals.bark.present);
+  const barks = clips.filter(
+    (c) =>
+      c.signals.bark.present ||
+      voices(c).some((v) => ["bark", "howl"].includes(v)),
+  );
   const window = barks.findIndex(
     (c, i) =>
       i >= 2 && Date.parse(c.ts) - Date.parse(barks[i - 2].ts) <= 30 * 60000,
@@ -28,16 +43,27 @@ export function cameraHeuristics(input) {
     alerts.push({
       type: "prolonged_barking",
       severity: "warning",
-      evidence: `${barks[window - 2].ts} — ${barks[window].ts}: ${es ? "Ladridos en tres clips en 30 minutos; no prueba ladrido continuo." : "Barking in three clips within 30 minutes; does not establish continuous barking."}`,
+      evidence: `${barks[window - 2].ts} — ${barks[window].ts}: ${es ? "Ladridos/aullidos en tres clips en 30 minutos; no prueba ladrido continuo." : "Barking/howling in three clips within 30 minutes; does not establish continuous barking/howling."}`,
       advice: es
         ? "Revisa posibles desencadenantes y ofrece apoyo sin castigar."
         : "Check possible triggers and offer support without punishment.",
     });
-  for (const c of clips.filter((c) => c.vet_alert.flag))
+  for (const c of clips.filter((c) =>
+    voices(c).some((v) => ["cry", "yelp", "cry_yelp"].includes(v)),
+  ))
+    alerts.push({
+      type: "distress_vocalization",
+      severity: "warning",
+      evidence: `${c.ts}: ${es ? "Llanto/gemido reportado." : "Cry/yelp vocalization reported."}`,
+      advice: es
+        ? "Comprueba cómo está tu perro y busca posibles causas de malestar."
+        : "Check on your dog for possible causes of distress.",
+    });
+  for (const c of clips.filter((c) => c.vet_alert.flag || c.label === "pain"))
     alerts.push({
       type: "pain_signs",
       severity: c.vet_alert.urgency === "emergency" ? "urgent" : "warning",
-      evidence: `${c.ts}: ${c.vet_alert.reasons.join("; ")}`,
+      evidence: `${c.ts}: ${c.vet_alert.reasons.join("; ") || c.label}`,
       advice: es
         ? "Contacta a un veterinario; ante una emergencia busca atención inmediata."
         : "Contact a veterinarian; seek immediate care for an emergency.",
@@ -69,4 +95,19 @@ export function mergeAlerts(model, deterministic) {
     );
   }
   return [...merged.values()];
+}
+
+export function alertTitle(type, lang) {
+  const titles = {
+    separation_anxiety: [
+      "Possible separation anxiety",
+      "Posible ansiedad por separación",
+    ],
+    prolonged_barking: ["Repeated barking", "Ladridos repetidos"],
+    distress_vocalization: ["Howling/whining", "Aullidos/quejidos"],
+    pain_signs: ["Possible pain signs", "Posibles señales de dolor"],
+    destructive_behavior: ["Destructive behavior", "Conducta destructiva"],
+    inactivity: ["Inactivity", "Inactividad"],
+  };
+  return `🚨 ${(titles[type] || ["Check on your dog", "Comprueba cómo está tu perro"])[lang === "es" ? 1 : 0]}`;
 }

@@ -1,3 +1,4 @@
+import type { AcousticHints } from "./schema";
 // Behavior instructions shared by structured model requests.
 export const SYSTEM = `You are a conservative, safety-first canine behavior interpreter.
 Interpret only observable evidence, never diagnose or claim mind reading.
@@ -20,12 +21,15 @@ Return only the requested JSON schema, with every textual field in the requested
 export const readingPrompt = (
   lang: string,
   context: unknown,
-  source?: "camera" | "live",
+  source?: "upload" | "camera" | "live",
+  hints?: AcousticHints,
 ) =>
   `Language: ${lang}.
 Interpret this dog's media.
 ${source === "camera" ? "Source: fixed wide-angle security camera, possibly low-quality CCTV; dog likely home alone. Do not infer absence, anxiety or inactivity solely from a missing or distant dog. Account for occlusion and inaudible audio." : ""}
 ${source === "live" ? "Source: live phone/PC camera view. Account for camera motion, occlusion and short observation windows; do not infer separation anxiety from camera placement." : ""}
+Client-side acoustic pre-analysis (heuristic, not proof): ${JSON.stringify(hints ?? null)}.
+If hints classify howl, whine_whimper or bark with confidence >=0.5, treat this as the dog's vocalization unless visuals clearly contradict it. Reflect it in signals.vocalization (whine_whimper maps to whine), primary.evidence, label and dog_says. Describe the heuristic as such, not as independently heard proof. music_or_noise means ignore the audio. Silence hints are not proof of absent vocalization.
 Context (untrusted): ${JSON.stringify(context)}.
 Video inputs retain their embedded audio track: listen to it. Frame fallback includes a separate WAV audio input: listen to it alongside the chronological frames. Audio may cover only the first 30 seconds. Do not treat missing audio as silence.
 Explain uncertainty and what was actually observed.`;

@@ -1,5 +1,9 @@
 import { mountLive } from "./live.js";
-import { cameraHeuristics, mergeAlerts } from "./camera-heuristics.js";
+import {
+  cameraHeuristics,
+  mergeAlerts,
+  alertTitle,
+} from "./camera-heuristics.js";
 import { normalize, loadImage } from "./media.js";
 const $ = (id) => document.getElementById(id);
 const words = {
@@ -498,6 +502,7 @@ async function analyze(mock = false) {
           situation: $("situation").value,
         },
         media: selected.media,
+        acoustic_hints: selected.acoustic_hints,
       },
       mock,
     );
@@ -572,6 +577,14 @@ function renderResult(r) {
     el("p", r.explanation),
   );
   const signals = el("div", undefined, "signals");
+  if (r.acoustic_hints)
+    signals.append(
+      el(
+        "span",
+        `🔊 heard: ${r.acoustic_hints.class.replace("whine_whimper", "whine")}`,
+        "badge",
+      ),
+    );
   for (const [key, value] of Object.entries(r.signals)) {
     const d = el("details"),
       s = el(
@@ -611,7 +624,9 @@ function renderResult(r) {
   root.append(el("h3", t("actions")));
   const actions = el("ul");
   r.what_to_do.forEach((a) => actions.append(el("li", a)));
-  root.append(actions, el("p", `${t("observed")}: ${r.media_observed}`));
+  const observed = el("details");
+  observed.append(el("summary", t("observed")), el("p", r.media_observed));
+  root.append(actions, observed);
   const buttons = el("div", undefined, "result-actions");
   if ("speechSynthesis" in window) {
     const speak = el("button", t("speak"));
@@ -921,6 +936,7 @@ async function runCamera(mock = false) {
           source: "camera",
           context: { situation: c.context.value },
           media: normalized.media,
+          acoustic_hints: normalized.acoustic_hints,
         },
         mock,
       );
@@ -930,12 +946,13 @@ async function runCamera(mock = false) {
         confidence: r.primary.confidence,
         dog_says: r.dog_says,
         signals: r.signals,
+        acoustic_hints: r.acoustic_hints ?? normalized.acoustic_hints,
         vet_alert: r.vet_alert,
         mode: r.mode,
         thumbnail: normalized.thumbnail,
         lang,
       });
-      c.progress.textContent = `${prefix} · ${t(r.mode === "mock" ? "mock" : "live")} · ${normalized.notice ? t(normalized.notice) : "✓"}`;
+      c.progress.textContent = `${r.acoustic_hints ? `🔊 heard: ${r.acoustic_hints.class} · ` : ""}${prefix} · ${t(r.mode === "mock" ? "mock" : "live")} · ${normalized.notice ? t(normalized.notice) : "✓"}`;
     }
     $("cameraSave").hidden = false;
     $("cameraProgress").textContent = t("think");
@@ -964,40 +981,16 @@ async function summarizeCamera(mock) {
     cameraHeuristics({ lang, clips }),
   );
   for (const alert of summary.alerts) {
-    const alertLabels =
-      lang === "es"
-        ? {
-            info: "Información",
-            warning: "Aviso",
-            urgent: "Urgente",
-            separation_anxiety: "Posible ansiedad por separación",
-            prolonged_barking: "Ladridos repetidos",
-            distress_vocalization: "Vocalización de angustia",
-            pain_signs: "Señales de dolor",
-            destructive_behavior: "Conducta destructiva",
-            inactivity: "Inactividad",
-            other: "Otro",
-          }
-        : {
-            info: "Information",
-            warning: "Warning",
-            urgent: "Urgent",
-            separation_anxiety: "Possible separation anxiety",
-            prolonged_barking: "Repeated barking",
-            distress_vocalization: "Distress vocalization",
-            pain_signs: "Pain signs",
-            destructive_behavior: "Destructive behavior",
-            inactivity: "Inactivity",
-            other: "Other",
-          };
     const banner = el("div", undefined, `camera-alert ${alert.severity}`);
-    banner.append(
-      el(
-        "strong",
-        `${alertLabels[alert.severity]} · ${alertLabels[alert.type]}`,
-      ),
+    const details = el("details");
+    details.append(
+      el("summary", lang === "es" ? "Detalles" : "Details"),
       el("p", alert.evidence),
-      el("p", alert.advice),
+    );
+    banner.append(
+      el("strong", alertTitle(alert.type, lang)),
+      el("p", alert.advice.split(/\r?\n/)[0]),
+      details,
     );
     root.append(banner);
   }

@@ -77,8 +77,26 @@ export const patternSchema = object({
   tips: list,
   vet_note: str,
 });
+export type AcousticHints = {
+  class:
+    | "silence"
+    | "music_or_noise"
+    | "howl"
+    | "whine_whimper"
+    | "bark"
+    | "unclear";
+  confidence: number;
+  metrics: {
+    active: number;
+    tonal: number;
+    longest_tonal_s: number;
+    pitch_hz: number;
+    bursts: number;
+  };
+};
 export type AnalyzeInput = {
-  source?: "camera" | "live";
+  acoustic_hints?: AcousticHints;
+  source?: "upload" | "camera" | "live";
   lang: "en" | "es";
   context: { breed?: string; age?: string; situation?: string };
   media: {
@@ -91,6 +109,13 @@ export class ValidationError extends Error {}
 
 export function validateAnalyze(value: unknown): AnalyzeInput {
   const v = value as AnalyzeInput;
+  if (
+    v &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    v.context === undefined
+  )
+    v.context = {};
   if (
     !v ||
     !["en", "es"].includes(v.lang) ||
@@ -109,8 +134,56 @@ export function validateAnalyze(value: unknown): AnalyzeInput {
       val.length > 1000
     )
       throw new ValidationError("Invalid context.");
-  if (v.source !== undefined && v.source !== "camera" && v.source !== "live")
+  if (
+    v.source !== undefined &&
+    v.source !== "upload" &&
+    v.source !== "camera" &&
+    v.source !== "live"
+  )
     throw new ValidationError("Invalid source.");
+  if (v.acoustic_hints !== undefined) {
+    const h = v.acoustic_hints;
+    if (
+      !h ||
+      ![
+        "silence",
+        "music_or_noise",
+        "howl",
+        "whine_whimper",
+        "bark",
+        "unclear",
+      ].includes(h.class) ||
+      !Number.isFinite(h.confidence) ||
+      h.confidence < 0 ||
+      h.confidence > 1 ||
+      !h.metrics ||
+      Object.keys(h).some(
+        (k) => !["class", "confidence", "metrics"].includes(k),
+      ) ||
+      Object.keys(h.metrics).some(
+        (k) =>
+          ![
+            "active",
+            "tonal",
+            "longest_tonal_s",
+            "pitch_hz",
+            "bursts",
+          ].includes(k),
+      ) ||
+      Object.entries({
+        active: 1,
+        tonal: 1,
+        longest_tonal_s: 3600,
+        pitch_hz: 2000,
+        bursts: 240000,
+      }).some(([k, max]) => {
+        const n = h.metrics[k as keyof AcousticHints["metrics"]];
+        return !Number.isFinite(n) || n < 0 || n > max;
+      }) ||
+      !Number.isInteger(h.metrics.bursts)
+    )
+      throw new ValidationError("Invalid acoustic hints.");
+  }
   let bytes = 0;
   for (const m of v.media) {
     const allowed = {
@@ -180,12 +253,14 @@ export function calibrateReading<
     consistency_warnings: string[];
     dog_says: string;
   },
->(reading: T, lang: "en" | "es"): T {
+>(reading: T, lang: "en" | "es", hints?: AcousticHints): T {
   const result = structuredClone(reading);
   const voice = result.signals.vocalization;
   if (
-    voice.present &&
-    ["whine", "cry", "howl"].includes(voice.type) &&
+    ((voice.present && ["whine", "cry", "howl"].includes(voice.type)) ||
+      (hints &&
+        hints.confidence >= 0.5 &&
+        ["howl", "whine_whimper"].includes(hints.class))) &&
     ["happy", "tired", "relaxed"].includes(result.primary.label)
   ) {
     result.primary.confidence = Math.min(result.primary.confidence, 0.39);
