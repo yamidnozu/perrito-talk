@@ -740,3 +740,30 @@ dialog img {
     scroll-behavior: auto !important;
   }
 }
+
+.camera-timeline {
+  border-left: 3px solid var(--accent, #b85f43);
+  padding-left: 2rem;
+}
+.camera-timeline li {
+  padding: 1rem 0;
+}
+.camera-alert {
+  padding: 1rem;
+  margin: 1rem 0;
+  border: 2px solid #a26920;
+  border-radius: 12px;
+  white-space: pre-line;
+}
+.camera-alert.urgent {
+  border-color: #ac2533;
+}
+#cameraClips label {
+  display: block;
+  margin: 0.5rem 0;
+}
+#cameraClips input,
+#cameraClips textarea {
+  display: block;
+  width: 100%;
+}

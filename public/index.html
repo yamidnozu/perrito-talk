@@ -38,6 +38,7 @@
       <nav aria-label="Main">
         <button id="readTab" class="active" data-i18n="read">Read my dog</button
         ><button id="diaryTab" data-i18n="diary">Dog diary</button>
+        <button id="cameraTab" data-i18n="cameraMode">Camera mode</button>
       </nav>
       <section id="reader">
         <div class="hero">
@@ -164,6 +165,24 @@
             aria-live="polite"
           ></section>
         </div>
+      </section>
+      <section id="cameraView" hidden>
+        <h1 data-i18n="cameraMode">Camera mode</h1>
+        <p data-i18n="cameraHelp"></p>
+        <input
+          id="cameraFiles"
+          type="file"
+          accept="video/*,.mp4,.mov,.webm"
+          multiple
+          aria-label="Camera clips"
+        />
+        <div id="cameraClips"></div>
+        <button id="cameraRun" data-i18n="cameraRun"></button>
+        <button id="cameraDemo" data-i18n="cameraDemo"></button>
+        <button id="cameraStream" data-i18n="cameraStream"></button>
+        <p id="cameraProgress" role="status" aria-live="polite"></p>
+        <div id="cameraResult" aria-live="polite"></div>
+        <button id="cameraSave" data-i18n="cameraSave" hidden></button>
       </section>
       <section id="diaryView" hidden>
         <div class="diary-heading">

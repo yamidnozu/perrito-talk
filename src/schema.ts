@@ -1,3 +1,4 @@
+// Shared strict model schema and request validation for Worker endpoints.
 export const labels = [
   "hungry",
   "play",
@@ -12,10 +13,10 @@ export const labels = [
   "aggressive_warning",
   "other",
 ] as const;
-const str = { type: "string" };
+export const str = { type: "string" };
 const confidence = { type: "number", minimum: 0, maximum: 1 };
 const list = { type: "array", items: str };
-const object = (properties: Record<string, unknown>) => ({
+export const object = (properties: Record<string, unknown>) => ({
   type: "object",
   properties,
   required: Object.keys(properties),
@@ -26,12 +27,30 @@ export const readingSchema = object({
     label: { type: "string", enum: labels },
     emoji: str,
     confidence,
+    evidence: { type: "array", items: str, minItems: 1, maxItems: 4 },
   }),
   secondary: {
     type: "array",
     items: object({ label: { type: "string", enum: labels }, confidence }),
   },
   signals: object({
+    vocalization: object({
+      type: {
+        type: "string",
+        enum: [
+          "none",
+          "bark",
+          "howl",
+          "whine",
+          "cry",
+          "growl",
+          "pant",
+          "human_voice_music_noise_only",
+        ],
+      },
+      present: { type: "boolean" },
+      description: str,
+    }),
     bark: object({ present: { type: "boolean" }, description: str }),
     tail: str,
     ears: str,
@@ -39,6 +58,8 @@ export const readingSchema = object({
     face: str,
     body_other: str,
   }),
+  low_confidence: { type: "boolean" },
+  consistency_warnings: list,
   dog_says: str,
   explanation: str,
   what_to_do: list,
@@ -57,6 +78,7 @@ export const patternSchema = object({
   vet_note: str,
 });
 export type AnalyzeInput = {
+  source?: "camera";
   lang: "en" | "es";
   context: { breed?: string; age?: string; situation?: string };
   media: {
@@ -87,6 +109,8 @@ export function validateAnalyze(value: unknown): AnalyzeInput {
       val.length > 1000
     )
       throw new ValidationError("Invalid context.");
+  if (v.source !== undefined && v.source !== "camera")
+    throw new ValidationError("Invalid source.");
   let bytes = 0;
   for (const m of v.media) {
     const allowed = {
@@ -132,7 +156,10 @@ export function matchesSchema(value: unknown, schema: any): boolean {
     );
   if (schema.type === "array")
     return (
-      Array.isArray(value) && value.every((v) => matchesSchema(v, schema.items))
+      Array.isArray(value) &&
+      (schema.minItems === undefined || value.length >= schema.minItems) &&
+      (schema.maxItems === undefined || value.length <= schema.maxItems) &&
+      value.every((v) => matchesSchema(v, schema.items))
     );
   if (schema.type === "number")
     return (
@@ -142,4 +169,51 @@ export function matchesSchema(value: unknown, schema: any): boolean {
       value <= schema.maximum
     );
   return typeof value === schema.type;
+}
+
+/** Apply deterministic safeguards after schema validation without mutating the reading. */
+export function calibrateReading<
+  T extends {
+    primary: { label: string; confidence: number };
+    signals: { vocalization: { present: boolean; type: string } };
+    low_confidence: boolean;
+    consistency_warnings: string[];
+    dog_says: string;
+  },
+>(reading: T, lang: "en" | "es"): T {
+  const result = structuredClone(reading);
+  const voice = result.signals.vocalization;
+  if (
+    voice.present &&
+    ["whine", "cry", "howl"].includes(voice.type) &&
+    ["happy", "tired", "relaxed"].includes(result.primary.label)
+  ) {
+    result.primary.confidence = Math.min(result.primary.confidence, 0.39);
+    result.consistency_warnings.push(
+      lang === "es"
+        ? "La vocalización contradice la interpretación de felicidad o descanso."
+        : "The vocalization conflicts with the happy or resting interpretation.",
+    );
+  }
+  if (result.primary.confidence < 0.4) {
+    result.low_confidence = true;
+    result.primary.label = "other";
+    const sounds: Record<string, [string, string]> = {
+      bark: ["Estoy ladrando. ", "I'm barking. "],
+      howl: ["Estoy aullando. ", "I'm howling. "],
+      whine: ["Estoy gimiendo. ", "I'm whimpering. "],
+      cry: ["Estoy llorando o dando quejidos. ", "I'm crying or yelping. "],
+      growl: ["Estoy gruñendo. ", "I'm growling. "],
+      pant: ["Estoy jadeando. ", "I'm panting. "],
+    };
+    const sound = voice.present
+      ? sounds[voice.type]?.[lang === "es" ? 0 : 1] || ""
+      : "";
+    result.dog_says =
+      sound +
+      (lang === "es"
+        ? "No estoy seguro… quizá necesito que observes mis señales un poco más."
+        : "I'm not sure… perhaps I need you to watch my signals a little longer.");
+  }
+  return result;
 }

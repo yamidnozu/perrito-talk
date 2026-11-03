@@ -39,9 +39,13 @@ export function mockReading(input: AnalyzeInput) {
       label,
       emoji: pain ? "🩹" : door ? "🚪" : play ? "🎾" : "🐶",
       confidence: pain ? 0.72 : 0.68,
+      evidence: [unknown],
     },
     secondary: [{ label: "attention", confidence: 0.4 }],
+    low_confidence: false,
+    consistency_warnings: [],
     signals: {
+      vocalization: { type: "none", present: false, description: unknown },
       bark: {
         present: audio,
         description: audio

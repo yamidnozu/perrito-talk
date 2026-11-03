@@ -1,7 +1,16 @@
+import { cameraHeuristics, mergeAlerts } from "./camera-heuristics.js";
 import { normalize, loadImage } from "./media.js";
 const $ = (id) => document.getElementById(id);
 const words = {
   en: {
+    cameraMode: "Camera mode",
+    cameraHelp:
+      "Upload up to 8 security-camera clips. Times default to file modification time; edit to match recording time. Gaps are unobserved.",
+    cameraRun: "Analyze clips",
+    cameraSave: "Save all readings to diary",
+    cameraDemo: "Demo summary",
+    cameraContext: "Optional context",
+    cameraStream: "Live stream · planned",
     read: "Read my dog",
     diary: "Dog diary",
     eyebrow: "A LITTLE CLOSER. A LITTLE MORE WOOF.",
@@ -69,8 +78,6 @@ const words = {
     audio30:
       "Audio normalized to mono WAV; only the first 30 seconds are sent.",
     framesAudio: "Video converted to 4 frames + the first 30 seconds of audio.",
-    framesOnly:
-      "Video converted to 4 frames. Audio could not be decoded in this browser; upload audio separately for sound analysis.",
     generating: "Making something worth a woof…",
     fallback: "Browser-made card · illustrated fallback",
     imageLive: "Muse Image · generated card",
@@ -101,6 +108,14 @@ const words = {
   },
   es: {
     read: "Entender a mi perro",
+    cameraMode: "Modo cámara",
+    cameraHelp:
+      "Sube hasta 8 clips de seguridad. La hora predeterminada es la modificación del archivo; ajústala a la grabación. Los intervalos no se observan.",
+    cameraRun: "Analizar clips",
+    cameraSave: "Guardar todas las lecturas en el diario",
+    cameraDemo: "Resumen de demostración",
+    cameraContext: "Contexto opcional",
+    cameraStream: "Transmisión en vivo · prevista",
     diary: "Diario perruno",
     eyebrow: "MÁS CERCA. CON UN POCO MÁS DE GUAU.",
     headline: "Grandes emociones.\nPequeñas pistas.",
@@ -167,8 +182,6 @@ const words = {
       "Audio convertido a WAV mono; solo se envían los primeros 30 segundos.",
     framesAudio:
       "Video convertido en 4 fotogramas + los primeros 30 segundos de audio.",
-    framesOnly:
-      "Video convertido en 4 fotogramas. No se pudo decodificar el audio; súbelo por separado para analizar sonidos.",
     generating: "Creando algo digno de un guau…",
     fallback: "Tarjeta creada en tu navegador · alternativa ilustrada",
     imageLive: "Muse Image · tarjeta generada",
@@ -275,20 +288,27 @@ $("language").onclick = () => {
   setLanguage();
 };
 
-function tab(diary) {
-  $("reader").hidden = diary;
+function tab(diary, camera = false) {
+  $("cameraView").hidden = !camera;
+  $("cameraTab").classList.toggle("active", camera);
+  $("reader").hidden = diary || camera;
   $("diaryView").hidden = !diary;
-  $("readTab").classList.toggle("active", !diary);
+  $("readTab").classList.toggle("active", !diary && !camera);
   $("diaryTab").classList.toggle("active", diary);
   if (diary) renderDiary();
 }
 $("readTab").onclick = () => tab(false);
 $("diaryTab").onclick = () => tab(true);
+$("cameraTab").onclick = () => tab(false, true);
 
 function lock(value) {
   busy = value;
   for (const id of [
     "analyze",
+    "cameraFiles",
+    "cameraRun",
+    "cameraDemo",
+    "cameraSave",
     "sample",
     "file",
     "recordVideo",
@@ -526,6 +546,12 @@ function renderResult(r) {
     el("h2", t("labels")[r.primary.label] || r.primary.label),
     el("div", r.dog_says, "speech"),
   );
+  if (r.low_confidence || r.primary.confidence < 0.4)
+    root.append(
+      el("span", lang === "es" ? "Baja confianza" : "Low confidence", "badge"),
+    );
+  for (const warning of r.consistency_warnings || [])
+    root.append(el("p", warning));
   const confidence = el("div", undefined, "confidence"),
     fill = el("span");
   fill.style.width = `${Math.round(r.primary.confidence * 100)}%`;
@@ -541,8 +567,15 @@ function renderResult(r) {
   const signals = el("div", undefined, "signals");
   for (const [key, value] of Object.entries(r.signals)) {
     const d = el("details"),
-      s = el("summary", t("signalNames")[key]);
-    d.append(s, el("span", key === "bark" ? value.description : value));
+      s = el(
+        "summary",
+        t("signalNames")[key] ||
+          (lang === "es" ? "Vocalización" : "Vocalization"),
+      );
+    d.append(
+      s,
+      el("span", typeof value === "object" ? value.description : value),
+    );
     signals.append(d);
   }
   root.append(signals);
@@ -806,3 +839,227 @@ fetch("/api/health")
     $("mode").textContent = t(live ? "live" : "mock");
   })
   .catch(() => {});
+
+let cameraFiles = [],
+  cameraReadings = [],
+  cameraSaved = false;
+$("cameraFiles").onchange = () => {
+  if (busy) return;
+  const files = [...$("cameraFiles").files];
+  const root = $("cameraClips");
+  root.replaceChildren();
+  cameraFiles = [];
+  if (
+    files.length > 8 ||
+    files.some(
+      (f) => !f.type.startsWith("video/") && !/\.(mp4|mov|webm)$/i.test(f.name),
+    )
+  ) {
+    $("cameraProgress").textContent =
+      lang === "es" ? "Elige de 1 a 8 vídeos." : "Choose 1–8 videos.";
+    return;
+  }
+  cameraFiles = files.map((file) => {
+    const row = el("div", undefined, "panel");
+    const timestamp = el("input");
+    timestamp.type = "datetime-local";
+    timestamp.step = "1";
+    const date = new Date(file.lastModified);
+    timestamp.value = new Date(
+      date.getTime() - date.getTimezoneOffset() * 60000,
+    )
+      .toISOString()
+      .slice(0, 19);
+    const timeLabel = el(
+      "label",
+      file.name + (lang === "es" ? " · Hora local" : " · Local time"),
+    );
+    timeLabel.append(timestamp);
+    const context = el("textarea");
+    context.maxLength = 1000;
+    const contextLabel = el("label", t("cameraContext"));
+    contextLabel.append(context);
+    const progress = el("p");
+    progress.setAttribute("role", "status");
+    row.append(timeLabel, contextLabel, progress);
+    root.append(row);
+    return { file, timestamp, context, progress };
+  });
+};
+async function runCamera(mock = false) {
+  if (busy || !cameraFiles.length) return;
+  lock(true);
+  cameraReadings = [];
+  cameraSaved = false;
+  $("cameraSave").hidden = true;
+  $("cameraResult").replaceChildren();
+  cameraFiles.forEach((c) => {
+    c.timestamp.disabled = true;
+    c.context.disabled = true;
+    c.progress.textContent = "";
+  });
+  try {
+    const ordered = cameraFiles
+      .map((c) => ({ ...c, ts: new Date(c.timestamp.value).toISOString() }))
+      .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
+    for (const [i, c] of ordered.entries()) {
+      const prefix = `${i + 1}/${ordered.length} · ${c.file.name}`;
+      c.progress.textContent = `${prefix} · ${t("prepare")}`;
+      const normalized = await normalize(c.file);
+      c.progress.textContent = `${prefix} · ${normalized.notice ? t(normalized.notice) : ""} · ${t("think")}`;
+      const r = await api(
+        "analyze",
+        {
+          lang,
+          source: "camera",
+          context: { situation: c.context.value },
+          media: normalized.media,
+        },
+        mock,
+      );
+      cameraReadings.push({
+        ts: c.ts,
+        label: r.primary.label,
+        confidence: r.primary.confidence,
+        dog_says: r.dog_says,
+        signals: r.signals,
+        vet_alert: r.vet_alert,
+        mode: r.mode,
+        thumbnail: normalized.thumbnail,
+        lang,
+      });
+      c.progress.textContent = `${prefix} · ${t(r.mode === "mock" ? "mock" : "live")} · ${normalized.notice ? t(normalized.notice) : "✓"}`;
+    }
+    $("cameraSave").hidden = false;
+    $("cameraProgress").textContent = t("think");
+    await summarizeCamera(mock);
+  } catch (e) {
+    $("cameraProgress").textContent = e.message || t("error");
+    $("cameraSave").hidden = !cameraReadings.length;
+  } finally {
+    lock(false);
+    cameraFiles.forEach((c) => {
+      c.timestamp.disabled = false;
+      c.context.disabled = false;
+    });
+  }
+}
+async function summarizeCamera(mock) {
+  const clips = cameraReadings.map(({ thumbnail, lang, ...c }) => c);
+  const summary = await api("camera/summary", { lang, clips }, mock);
+  const root = $("cameraResult");
+  root.replaceChildren(
+    el("p", t(summary.mode === "mock" ? "mock" : "live")),
+    el("p", summary.overall),
+  );
+  summary.alerts = mergeAlerts(
+    summary.alerts,
+    cameraHeuristics({ lang, clips }),
+  );
+  for (const alert of summary.alerts) {
+    const alertLabels =
+      lang === "es"
+        ? {
+            info: "Información",
+            warning: "Aviso",
+            urgent: "Urgente",
+            separation_anxiety: "Posible ansiedad por separación",
+            prolonged_barking: "Ladridos repetidos",
+            distress_vocalization: "Vocalización de angustia",
+            pain_signs: "Señales de dolor",
+            destructive_behavior: "Conducta destructiva",
+            inactivity: "Inactividad",
+            other: "Otro",
+          }
+        : {
+            info: "Information",
+            warning: "Warning",
+            urgent: "Urgent",
+            separation_anxiety: "Possible separation anxiety",
+            prolonged_barking: "Repeated barking",
+            distress_vocalization: "Distress vocalization",
+            pain_signs: "Pain signs",
+            destructive_behavior: "Destructive behavior",
+            inactivity: "Inactivity",
+            other: "Other",
+          };
+    const banner = el("div", undefined, `camera-alert ${alert.severity}`);
+    banner.append(
+      el(
+        "strong",
+        `${alertLabels[alert.severity]} · ${alertLabels[alert.type]}`,
+      ),
+      el("p", alert.evidence),
+      el("p", alert.advice),
+    );
+    root.append(banner);
+  }
+  const timeline = el("ol", undefined, "camera-timeline");
+  for (const item of summary.timeline) {
+    const row = el("li");
+    const time = el("time", new Date(item.ts).toLocaleString(lang));
+    time.dateTime = item.ts;
+    row.append(
+      time,
+      el("h3", `${item.emoji} ${item.dog_says}`),
+      el("p", item.note),
+    );
+    timeline.append(row);
+  }
+  root.append(timeline);
+  const recommendations = el("ul");
+  summary.recommendations.forEach((r) => recommendations.append(el("li", r)));
+  root.append(recommendations);
+  $("cameraProgress").textContent = "";
+}
+$("cameraRun").onclick = () => runCamera();
+$("cameraDemo").onclick = async () => {
+  if (busy || !cameraReadings.length) return runCamera(true);
+  lock(true);
+  try {
+    await summarizeCamera(true);
+  } catch (e) {
+    $("cameraProgress").textContent = e.message;
+  } finally {
+    lock(false);
+  }
+};
+$("cameraSave").onclick = () => {
+  if (busy || cameraSaved || !cameraReadings.length) return;
+  const next = [
+    ...cameraReadings.map((c) => ({
+      date: c.ts,
+      label: c.label,
+      phrase: c.dog_says,
+      thumbnail: c.thumbnail,
+      mode: c.mode,
+      lang: c.lang,
+      vet: c.vet_alert.flag,
+    })),
+    ...entries,
+  ]
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+    .slice(0, 100);
+  try {
+    localStorage.setItem("perrito-diary", JSON.stringify(next));
+    entries = next;
+    cameraSaved = true;
+    $("cameraSave").hidden = true;
+    $("cameraProgress").textContent = t("saved");
+    renderDiary();
+  } catch {
+    $("cameraProgress").textContent = t("notSaved");
+  }
+};
+$("cameraStream").onclick = async () => {
+  try {
+    const response = await fetch("/api/camera/stream", { method: "POST" });
+    const result = await response.json();
+    $("cameraProgress").textContent =
+      lang === "es"
+        ? "Aún no implementado. Se necesita un puente local con ffmpeg (LAN/Raspberry Pi) para enviar clips MP4 de 10–15 s. Workers no consume RTSP directamente. Muse realtime: futuro. Consulta docs/camera-bridge.md."
+        : result.plan;
+  } catch {
+    $("cameraProgress").textContent = t("error");
+  }
+};

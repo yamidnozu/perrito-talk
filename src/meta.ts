@@ -1,3 +1,4 @@
+// Meta API adapters; credentials stay in the Worker.
 import { SYSTEM } from "./prompts";
 import type { AnalyzeInput } from "./schema";
 export const MODEL = "muse-spark-1.3";
@@ -51,6 +52,11 @@ export async function structured(
   schema: unknown,
   parts: unknown[] = [],
 ) {
+  const audioNote = parts.some((p: any) => p.type === "input_video")
+    ? "A video with its original embedded audio is attached. Listen to that track before choosing a label; report unavailable audio explicitly."
+    : parts.some((p: any) => p.type === "input_audio")
+      ? "An audio track is attached. Listen to it before choosing a label, including when accompanied by video frames."
+      : "No audio track is attached; do not invent audible vocalizations.";
   const r = await fetch("https://api.meta.ai/v1/responses", {
     method: "POST",
     headers: {
@@ -64,7 +70,10 @@ export async function structured(
         {
           type: "message",
           role: "user",
-          content: [{ type: "input_text", text: prompt }, ...parts],
+          content: [
+            { type: "input_text", text: `${prompt}\n${audioNote}` },
+            ...parts,
+          ],
         },
       ],
       text: {

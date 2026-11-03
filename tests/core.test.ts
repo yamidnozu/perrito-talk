@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { validateAnalyze, matchesSchema, readingSchema } from "../src/schema";
+import {
+  calibrateReading,
+  validateAnalyze,
+  matchesSchema,
+  readingSchema,
+} from "../src/schema";
 import { mockReading, mockPatterns } from "../src/mock";
 import { parseResponse, mediaParts } from "../src/meta";
 import worker from "../src/index";
@@ -256,4 +261,104 @@ describe("live card contract without network", () => {
       expect(await response.json()).toEqual({ mode: "mock", fallback: true });
     },
   );
+});
+
+describe("reading calibration", () => {
+  it.each(["whine", "cry", "howl"])(
+    "downgrades conflicting %s and preserves original and vet alert",
+    (type) => {
+      const reading = mockReading(input());
+      reading.primary.label = "happy";
+      reading.signals.vocalization = {
+        type,
+        present: true,
+        description: "0–8s",
+      };
+      const checked = calibrateReading(reading, "en");
+      expect(checked.primary).toMatchObject({
+        label: "other",
+        confidence: 0.39,
+      });
+      expect(checked.low_confidence).toBe(true);
+      expect(checked.consistency_warnings).toHaveLength(1);
+      expect(checked.dog_says).toContain("I'm not sure");
+      expect(checked.vet_alert).toEqual(reading.vet_alert);
+      expect(reading.primary.confidence).toBe(0.68);
+    },
+  );
+  it("forces a hedged Spanish phrase below threshold, but leaves 0.4 unchanged", () => {
+    const reading = mockReading(input());
+    reading.primary.confidence = 0.1;
+    expect(calibrateReading(reading, "es")).toMatchObject({
+      low_confidence: true,
+      primary: { label: "other" },
+      dog_says: expect.stringContaining("No estoy seguro"),
+    });
+    reading.primary.confidence = 0.4;
+    expect(calibrateReading(reading, "en")).toEqual(reading);
+  });
+  it("rejects missing or excessive evidence", () => {
+    const { mode, ...reading } = mockReading(input());
+    for (const evidence of [[], ["a", "b", "c", "d", "e"]])
+      expect(
+        matchesSchema(
+          { ...reading, primary: { ...reading.primary, evidence } },
+          readingSchema,
+        ),
+      ).toBe(false);
+  });
+});
+
+describe("live reading safeguards without network", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("sends embedded video plus separate WAV intact and calibrates before returning", async () => {
+    const { mode, ...reading } = mockReading(input());
+    reading.primary.label = "tired";
+    reading.signals.vocalization = {
+      type: "howl",
+      present: true,
+      description: "Howling 0–8s",
+    };
+    const upstream = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ output_text: JSON.stringify(reading) }),
+      );
+    vi.stubGlobal("fetch", upstream);
+    const response = await worker.fetch(
+      new Request("https://local/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...input(),
+          media: [
+            { kind: "video", mime: "video/mp4", data_b64: "AAAA" },
+            { kind: "audio", mime: "audio/wav", data_b64: "AAAA" },
+          ],
+        }),
+      }),
+      { MODEL_API_KEY: "test-placeholder", ASSETS: { fetch: vi.fn() } as any },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      mode: "live",
+      low_confidence: true,
+      primary: { label: "other", confidence: 0.39 },
+      dog_says: expect.stringContaining("howling"),
+    });
+    const content = JSON.parse(upstream.mock.calls[0][1].body).input[0].content;
+    expect(content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "input_video",
+          video_url: "data:video/mp4;base64,AAAA",
+        }),
+        expect.objectContaining({
+          type: "input_audio",
+          input_audio: { data: "AAAA", format: "wav" },
+        }),
+      ]),
+    );
+    expect(content[0].text).toContain("embedded audio");
+  });
 });

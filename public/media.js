@@ -1,3 +1,4 @@
+// Browser normalization preserves video audio or stops before submitting frames.
 const LIMIT = 30;
 export const b64 = (blob) =>
   new Promise((resolve, reject) => {
@@ -178,18 +179,21 @@ export async function normalize(file) {
         data_b64: await b64(await jpeg(video, 768)),
       });
     }
-    let notice = "framesOnly";
+    // Never submit silent frames after losing the source video's audio.
+    let audio;
     try {
-      const audio = await wav(file);
-      media.push({
-        kind: "audio",
-        mime: "audio/wav",
-        data_b64: await b64(audio),
-      });
-      notice = "framesAudio";
+      audio = await wav(file);
     } catch {
-      /* Some browsers cannot decode audio inside video containers. Tell the user. */
+      throw new Error(
+        "Cannot decode video audio. Export an MP4 with audio (under 12 MB), or upload a WAV audio clip separately.",
+      );
     }
+    media.push({
+      kind: "audio",
+      mime: "audio/wav",
+      data_b64: await b64(audio),
+    });
+    const notice = "framesAudio";
     return { media, thumbnail, notice };
   } finally {
     if (video) {
