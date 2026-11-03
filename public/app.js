@@ -1,6 +1,6 @@
+import { mountDevicePicker, openMedia } from "./devices.js";
 import {
   BLUR_NOTICE,
-  RAW_AUDIO,
   disableCameraEffects,
   heardText,
   mountLive,
@@ -37,6 +37,8 @@ const words = {
     choose: "Choose a moment",
     limits: "Images · MP4 video up to 12 MB · Audio up to 30 seconds",
     recordVideo: "◉ Record video",
+    cameraLabel: "Camera",
+    micLabel: "Microphone",
     recordAudio: "♫ Record audio",
     stop: "■ Stop",
     contextTitle: "A little context helps · optional +",
@@ -142,6 +144,8 @@ const words = {
     choose: "Elige un momento",
     limits: "Imágenes · Video MP4 hasta 12 MB · Audio hasta 30 segundos",
     recordVideo: "◉ Grabar video",
+    cameraLabel: "Cámara",
+    micLabel: "Micrófono",
     recordAudio: "♫ Grabar audio",
     stop: "■ Detener",
     contextTitle: "Un poco de contexto ayuda · opcional +",
@@ -341,6 +345,8 @@ function lock(value) {
     "file",
     "recordVideo",
     "recordAudio",
+    "recCamera",
+    "recMic",
     "patterns",
     "language",
   ])
@@ -426,15 +432,11 @@ async function record(video) {
   try {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)
       throw new Error();
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: RAW_AUDIO,
-      video: video
-        ? {
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          }
-        : false,
+    stream = await openMedia({
+      camera: $("recCamera").value,
+      mic: $("recMic").value,
+      video,
+      defaultFacing: "environment",
     });
     if (video && (await disableCameraEffects(stream)))
       status(BLUR_NOTICE[lang]);
@@ -1079,6 +1081,12 @@ $("cameraStream").onclick = async () => {
   }
 };
 
+mountDevicePicker({
+  camSelect: $("recCamera"),
+  micSelect: $("recMic"),
+  getLang: () => lang,
+  defaultFacing: "environment",
+});
 mountLive({
   getLang: () => lang,
   api,

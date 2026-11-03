@@ -846,3 +846,23 @@ dialog img {
   color: #8a4b08;
   font-size: 0.9rem;
 }
+
+/* Camera / microphone pickers in "Read my dog" */
+.device-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+}
+.device-row label {
+  flex: 1 1 140px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.device-row select,
+#liveCamera,
+#liveMic {
+  max-width: 100%;
+  min-width: 0;
+}

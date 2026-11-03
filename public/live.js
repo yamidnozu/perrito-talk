@@ -11,6 +11,7 @@ import {
   reserveAnalysis,
   newAlerts,
 } from "./live-logic.js";
+import { mountDevicePicker, openMedia, videoConstraints } from "./devices.js";
 
 /** Localized "🔊 heard: …" chip text for an acoustic hint or vocalization type. */
 export function heardText(kind, lang) {
@@ -31,12 +32,7 @@ export function heardText(kind, lang) {
     : `🔊 heard: ${en[kind] || kind.replaceAll("_", " ")}`;
 }
 
-/** Raw microphone: browser voice processing filters out barks and howls. */
-export const RAW_AUDIO = {
-  echoCancellation: false,
-  noiseSuppression: false,
-  autoGainControl: false,
-};
+export { RAW_AUDIO } from "./devices.js";
 
 /**
  * Turns off OS/browser camera effects (background blur, face framing, eye-gaze
@@ -69,7 +65,8 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
   const root = document.getElementById("liveView");
   const tr = (en, es) => (getLang() === "es" ? es : en);
   root.innerHTML = `<h2 id="liveTitle"></h2><p id="liveHelp"></p>
-    <div class="live-controls"><label><span id="liveCameraLabel"></span><select id="liveCamera"><option value="user"></option><option value="environment"></option></select></label>
+    <div class="live-controls"><label><span id="liveCameraLabel"></span><select id="liveCamera"></select></label>
+    <label><span id="liveMicLabel"></span><select id="liveMic"></select></label>
     <label><span id="liveIntervalLabel"></span><input id="liveInterval" type="number" min="10" max="15" value="12"></label>
     <label><span id="liveMaxLabel"></span><input id="liveMax" type="number" min="1" max="100" value="20"></label>
     <button id="liveStart"></button><button id="liveStop" disabled></button></div>
@@ -88,17 +85,69 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         "Cámara y micrófono. Se envían segmentos para analizar; se omiten los silenciosos sin movimiento. Mantén esta pestaña visible.",
       ],
       ["liveCameraLabel", "Camera", "Cámara"],
+      ["liveMicLabel", "Microphone", "Micrófono"],
       ["liveIntervalLabel", "Interval (seconds)", "Intervalo (segundos)"],
       ["liveMaxLabel", "Max analyses", "Máximo de análisis"],
       ["liveStart", "Start", "Iniciar"],
       ["liveStop", "Stop", "Detener"],
     ])
       $(id).textContent = tr(en, es);
-    $("liveCamera").options[0].textContent = tr("Front", "Frontal");
-    $("liveCamera").options[1].textContent = tr("Back", "Trasera");
   }
   labels();
   document.addEventListener("live-language", labels);
+  mountDevicePicker({
+    camSelect: $("liveCamera"),
+    micSelect: $("liveMic"),
+    getLang,
+    defaultFacing: "user",
+    onCamera: (value) => {
+      if (active?.stream) void swapCamera(active, value);
+    },
+  });
+  /** Hot-swap the camera mid-session: keeps mic, timeline and counters. */
+  async function swapCamera(s, value) {
+    try {
+      const fresh = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints(value),
+      });
+      const track = fresh.getVideoTracks()[0];
+      if (active !== s || !track) {
+        fresh.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      const old = s.stream.getVideoTracks();
+      s.stream = new MediaStream([track, ...s.stream.getAudioTracks()]);
+      const blurred = await disableCameraEffects(s.stream);
+      $("liveBlur").hidden = !blurred;
+      $("liveBlur").textContent = BLUR_NOTICE[getLang()] || BLUR_NOTICE.en;
+      watchEnded(s, track);
+      $("liveVideo").srcObject = s.stream;
+      await $("liveVideo")
+        .play()
+        .catch(() => {});
+      // Close the current segment now; onstop restarts recording on the new stream.
+      clearTimeout(s.timer);
+      if (s.recorder?.state === "recording") s.recorder.stop();
+      setTimeout(() => old.forEach((t) => t.stop()), 500);
+      $("liveStatus").textContent = tr("Camera switched", "Cámara cambiada");
+    } catch (e) {
+      $("liveStatus").textContent = tr(
+        "Could not switch camera.",
+        "No se pudo cambiar de cámara.",
+      );
+    }
+  }
+  function watchEnded(s, track) {
+    track.onended = () => {
+      if (active === s) {
+        stop();
+        $("liveStatus").textContent = tr(
+          "Camera or microphone disconnected.",
+          "Cámara o micrófono desconectado.",
+        );
+      }
+    };
+  }
   function tick(text, ts = new Date().toISOString(), skipped = false) {
     const li = document.createElement("li");
     li.textContent = `${new Date(ts).toLocaleTimeString()} · ${text}`;
@@ -127,7 +176,7 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     $("liveStatus").textContent = tr("Stopped", "Detenido");
     $("liveStop").disabled = true;
     $("liveStart").disabled = processing;
-    for (const id of ["liveCamera", "liveInterval", "liveMax"])
+    for (const id of ["liveMic", "liveInterval", "liveMax"])
       $(id).disabled = false;
   }
   $("liveStop").onclick = stop;
@@ -351,7 +400,7 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     });
     $("liveStart").disabled = true;
     $("liveStop").disabled = false;
-    for (const id of ["liveCamera", "liveInterval", "liveMax"])
+    for (const id of ["liveMic", "liveInterval", "liveMax"])
       $(id).disabled = true;
     $("liveTimeline").replaceChildren();
     $("liveOverlay").replaceChildren();
@@ -389,44 +438,11 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       s.audio = new AC();
       await s.audio.resume();
       if (active !== s) return;
-      const facing = $("liveCamera").value;
-      let acquired;
-      try {
-        acquired = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { exact: facing },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: RAW_AUDIO,
-        });
-      } catch (e) {
-        if (!["OverconstrainedError", "NotFoundError"].includes(e.name))
-          throw e;
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const cameras = devices.filter((d) => d.kind === "videoinput");
-        const camera =
-          cameras.find((d) =>
-            (facing === "environment"
-              ? /back|rear|environment/i
-              : /front|user|facetime/i
-            ).test(d.label),
-          ) || cameras[facing === "environment" ? cameras.length - 1 : 0];
-        acquired = await navigator.mediaDevices.getUserMedia({
-          video: camera
-            ? {
-                deviceId: { exact: camera.deviceId },
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-              }
-            : {
-                facingMode: facing,
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-              },
-          audio: RAW_AUDIO,
-        });
-      }
+      const acquired = await openMedia({
+        camera: $("liveCamera").value,
+        mic: $("liveMic").value,
+        defaultFacing: "user",
+      });
       if (active !== s) {
         acquired.getTracks().forEach((t) => t.stop());
         return;
@@ -466,17 +482,7 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
           s.motion = 1;
         }
       }, 500);
-      acquired.getTracks().forEach((track) => {
-        track.onended = () => {
-          if (active === s) {
-            stop();
-            $("liveStatus").textContent = tr(
-              "Camera or microphone disconnected.",
-              "Cámara o micrófono desconectado.",
-            );
-          }
-        };
-      });
+      acquired.getTracks().forEach((track) => watchEnded(s, track));
       record(s);
       $("liveStatus").textContent = tr("Recording", "Grabando");
     } catch (e) {
