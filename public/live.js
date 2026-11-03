@@ -641,8 +641,13 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     // Engineering decision: change triggers collect 6 s after the trigger. First-look,
     // check-in and manual readings use more pre-roll and a short post-roll so the
     // reading starts within seconds; the clip is still 10 s long.
+    // First look right after Start: wait until the clip holds minClipMs of real
+    // media (a 2 s clip missed barks that started a moment later).
     const post = trigger.types.some((x) => QUICK.includes(x))
-      ? s.config.firstLook.postMs
+      ? Math.max(
+          s.config.firstLook.postMs,
+          (s.config.firstLook.minClipMs || 0) - (t - s.startedAt),
+        )
       : 6000;
     const clipAt = t + post - 6000;
     const id = s.flight.acquire();

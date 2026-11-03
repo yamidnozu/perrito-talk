@@ -14,9 +14,18 @@ export function createPreroll({ seconds = 12, sampleRate = 16000 } = {}) {
     audio = audio.filter((a) => a.t >= cutoff);
   };
   const snapshot = (triggerTime) => {
-    const from = triggerTime - 4000,
-      to = triggerTime + 6000;
-    const eligible = frames.filter((f) => f.t >= from && f.t <= to);
+    // Clamp to captured audio: early clips (session just started) must not be
+    // padded with artificial silence, which hides real barks from the model and
+    // makes the acoustic hints read "silence".
+    const head = audio[0],
+      headStart = head
+        ? head.t - (head.pcm.length * 1000) / sampleRate
+        : -Infinity;
+    const frameFrom = triggerTime - 4000,
+      frameTo = triggerTime + 6000;
+    const from = Math.max(frameFrom, headStart),
+      to = Math.max(from, Math.min(frameTo, audio.at(-1)?.t ?? frameTo));
+    const eligible = frames.filter((f) => f.t >= frameFrom && f.t <= frameTo);
     // Uniformly sample up to six chronological keyframes, including endpoints.
     const count = Math.min(6, eligible.length);
     const chosen = Array.from(
@@ -52,7 +61,14 @@ export function createPreroll({ seconds = 12, sampleRate = 16000 } = {}) {
           offset,
         );
     }
-    return { chosen, pcm };
+    const span = audio.length
+      ? {
+          audioStart: headStart - frameFrom,
+          audioEnd: audio.at(-1).t - frameFrom,
+          pcmMs: Math.round(to - from),
+        }
+      : {};
+    return { chosen, pcm, span: { ...span, frames: eligible.length } };
   };
   return {
     startVideo(stream) {
@@ -96,7 +112,8 @@ export function createPreroll({ seconds = 12, sampleRate = 16000 } = {}) {
     },
     snapshot,
     async build(triggerTime) {
-      const { chosen, pcm } = snapshot(triggerTime);
+      const { chosen, pcm, span } = snapshot(triggerTime);
+      (globalThis.__clipSpans ||= []).push(span);
       const media = await Promise.all(
         chosen.map(async ({ blob }) => ({
           kind: "image",

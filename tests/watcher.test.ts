@@ -269,6 +269,17 @@ describe("pre-roll PCM and WAV integrity", () => {
     ring.stop();
     expect(ring.snapshot(14000).pcm.every((n) => n === 0)).toBe(true);
   });
+  it("does not pad an early clip with artificial leading silence", async () => {
+    const { createPreroll } = await import("../public/watcher/preroll.js");
+    const ring = createPreroll({ sampleRate: 10 });
+    // Capture started at t=0; a first-look at t=1 s would otherwise get 7 s of zeros.
+    for (let second = 1; second <= 3; second++)
+      ring.pushPCM(new Float32Array(10).fill(second), second * 1000);
+    const { pcm } = ring.snapshot(-3000);
+    expect(pcm).toHaveLength(30);
+    expect(pcm[0]).toBe(1);
+    expect(pcm[29]).toBe(3);
+  });
   it("encodes a mono 16 kHz signed PCM WAV with a valid length", async () => {
     const { encodeWav } = await import("../public/media.js");
     const blob = encodeWav(new Float32Array([-2, 0, 2]));
