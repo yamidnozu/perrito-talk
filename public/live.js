@@ -12,7 +12,26 @@ import {
   newAlerts,
 } from "./live-logic.js";
 
-export function mountLive({ getLang, api }) {
+/** Localized "🔊 heard: …" chip text for an acoustic hint or vocalization type. */
+export function heardText(kind, lang) {
+  const es = {
+    howl: "aullido",
+    whine_whimper: "quejido",
+    whine: "quejido",
+    bark: "ladrido",
+    cry: "llanto",
+    growl: "gruñido",
+    music_or_noise: "música o ruido",
+    silence: "silencio",
+    unclear: "incierto",
+  };
+  const en = { whine_whimper: "whine", music_or_noise: "music or noise" };
+  return lang === "es"
+    ? `🔊 se oye: ${es[kind] || kind.replaceAll("_", " ")}`
+    : `🔊 heard: ${en[kind] || kind.replaceAll("_", " ")}`;
+}
+
+export function mountLive({ getLang, api, labelOf = (x) => x }) {
   const root = document.getElementById("liveView");
   const tr = (en, es) => (getLang() === "es" ? es : en);
   root.innerHTML = `<h2 id="liveTitle"></h2><p id="liveHelp"></p>
@@ -127,7 +146,7 @@ export function mountLive({ getLang, api }) {
         return;
       }
       const demo = r.mode === "mock" ? tr(" · DEMO", " · DEMOSTRACIÓN") : "";
-      const label = r.primary.label.replaceAll("_", " ");
+      const label = labelOf(r.primary.label);
       const confidence = `${Math.round(r.primary.confidence * 100)}%`;
       row.textContent = `${new Date(ts).toLocaleTimeString()} · ${r.primary.emoji} · ${label} · ${r.dog_says} · ${confidence}${demo}`;
       const details = document.createElement("details");
@@ -151,10 +170,10 @@ export function mountLive({ getLang, api }) {
       if (r.low_confidence || r.primary.confidence < 0.4)
         overlay.append(badge(tr("Low confidence", "Baja confianza")));
       const heard =
-        r.acoustic_hints?.class.replace("whine_whimper", "whine") ||
+        r.acoustic_hints?.class ||
         (r.signals.vocalization.present ? r.signals.vocalization.type : null);
       const signals = [
-        ...(heard ? [`🔊 heard: ${heard}`] : []),
+        ...(heard ? [heardText(heard, getLang())] : []),
         ...r.primary.evidence,
       ];
       for (const signal of signals.slice(0, 2)) overlay.append(badge(signal));

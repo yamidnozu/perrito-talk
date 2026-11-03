@@ -1,4 +1,4 @@
-import { mountLive } from "./live.js";
+import { heardText, mountLive } from "./live.js";
 import {
   cameraHeuristics,
   mergeAlerts,
@@ -273,6 +273,17 @@ function setLanguage() {
     "aria-label",
     lang === "en" ? "Cambiar a español" : "Switch to English",
   );
+  // Accessible labels that are not visible text.
+  const aria = {
+    ".brand": ["PerritoTalk home", "Inicio de PerritoTalk"],
+    nav: ["Main", "Principal"],
+    "#cameraFiles": ["Camera clips", "Clips de cámara"],
+    "#closeCard": ["Close", "Cerrar"],
+  };
+  for (const [sel, [en, es]] of Object.entries(aria))
+    document
+      .querySelector(sel)
+      ?.setAttribute("aria-label", lang === "es" ? es : en);
   document.querySelectorAll("[data-i18n]").forEach((n) => {
     n.textContent = t(n.dataset.i18n);
     n.style.whiteSpace = "pre-line";
@@ -579,11 +590,7 @@ function renderResult(r) {
   const signals = el("div", undefined, "signals");
   if (r.acoustic_hints)
     signals.append(
-      el(
-        "span",
-        `🔊 heard: ${r.acoustic_hints.class.replace("whine_whimper", "whine")}`,
-        "badge",
-      ),
+      el("span", heardText(r.acoustic_hints.class, lang), "badge"),
     );
   for (const [key, value] of Object.entries(r.signals)) {
     const d = el("details"),
@@ -952,7 +959,7 @@ async function runCamera(mock = false) {
         thumbnail: normalized.thumbnail,
         lang,
       });
-      c.progress.textContent = `${r.acoustic_hints ? `🔊 heard: ${r.acoustic_hints.class} · ` : ""}${prefix} · ${t(r.mode === "mock" ? "mock" : "live")} · ${normalized.notice ? t(normalized.notice) : "✓"}`;
+      c.progress.textContent = `${r.acoustic_hints ? `${heardText(r.acoustic_hints.class, lang)} · ` : ""}${prefix} · ${t(r.mode === "mock" ? "mock" : "live")} · ${normalized.notice ? t(normalized.notice) : "✓"}`;
     }
     $("cameraSave").hidden = false;
     $("cameraProgress").textContent = t("think");
@@ -1064,4 +1071,8 @@ $("cameraStream").onclick = async () => {
   }
 };
 
-mountLive({ getLang: () => lang, api });
+mountLive({
+  getLang: () => lang,
+  api,
+  labelOf: (l) => words[lang].labels[l] || l.replaceAll("_", " "),
+});
