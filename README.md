@@ -273,13 +273,23 @@ evidence; their gates/source and TODO(evidence) live in `evidence-config.js`. A
 vision failure reports unknown presence and uses explicitly approximate motion.
 
 Choose sensitivity, a per-dog baseline profile, a session budget (1–100 attempts),
-optional heartbeat minutes (default **0**, off), and sustained voice preference
+check-in seconds while a dog is present (default **50**, 0 = off), and sustained voice preference
 (2–5 minutes, default 2). Profiles store bounded pitch/autocorrelation HNR proxy,
 spectral peak, bark-envelope rate and motion percentile measurements in localStorage,
 never media. Relative pitch remains unknown until at least ten bark windows are
 available for that dog. Ambient RMS/motion gates calibrate on the rolling last ten quiet-audio windows;
 these are engineering settings, not validated behavioral thresholds. Clear browser
 storage to reset profiles. HNR/nonlinear whine analysis remains experimental.
+
+**First look, check-ins and “Analyze now”.** A still dog never changes state, so
+the watcher no longer waits for a change: once the detector has held the dog for
+1.5 s it fires a `first_look` reading (2 s post-roll), then a `checkin` reading
+every 50 s while the dog stays present, plus a big **Analizar ahora** button
+(`manual`). These count against the budget, so the savings counter stays honest.
+A status line always shows the current step (watching with sound/motion vs gates →
+change detected + reason → analyzing N s → result or a readable error). Each
+analysis attempt times out at 30 s with one retry; the reading appears in a card
+above the video.
 
 Triggers coalesce simultaneous reasons into one request. Only one pre-roll/AI request
 is in flight; attempts, including failures, reserve the Spark budget. Reasons that
@@ -385,22 +395,22 @@ are not model accuracy. `not_verified` includes the DogFACS manual, cited books,
 Lund & Jørgensen's abstract, Reid journal details, Hantke 2018, per-class EfficientDet
 dog accuracy, and Bow-wow label quality.
 
-| Engineering decision (not a scientific cutoff) | Current configurable setting                                                                        |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Class-specific YAMNet gates                    | Howl .1; Bark/Growling/Dog .35; Bow-wow .5; Whimper(dog) .6; Yip .75 (requires Bark)                |
-| Short class-score persistence                  | 2.5 s; metadata retains raw model scores                                                            |
-| Observation hysteresis / stability             | Config state enter/exit gates; 2.5 s debounce; 1 s rolling motion maximum                           |
-| Burst grouping                                 | RMS-envelope inter-burst gap .5 s; counts are estimates                                             |
-| Sustained vocal trigger                        | User preference 2–5 min; default 2 min                                                              |
-| Ambient RMS/motion gates                       | Rolling median of ten quiet-audio windows: RMS ×3, motion ×1.25; minimum RMS .02                    |
-| Per-dog relative features                      | Ten bark windows minimum; 25th/75th percentiles, bounded 128-window history                         |
-| Spike / baseline                               | 3× baseline, .025 floor, 6 s persistence; baseline exponential weight .02                           |
-| Trigger cooldowns                              | State 20 s, voice start 30 s, sustained 60 s, enter/exit 30 s, spike 45 s                           |
-| Global gap / heartbeat                         | 8 s; heartbeat default off                                                                          |
-| Motion proxy gates                             | Active enter .10 / exit .06; high-motion proxy enter .40 / exit .25; not validated behavior cutoffs |
-| Presence persistence / calibration warmup      | 1.5 s object-hit hold; up to 10 s initial calibration wait                                          |
-| Acoustic fallback classes                      | Low-certainty engineering gates in `PARAMETERS.acoustic`; independent validation pending            |
-| Clip and savings reference                     | 4 s before + 6 s after; 12 s naive evaluation window                                                |
+| Engineering decision (not a scientific cutoff) | Current configurable setting                                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Class-specific YAMNet gates                    | Howl .1; Bark/Growling/Dog .35; Bow-wow .5; Whimper(dog) .6; Yip .75 (requires Bark)              |
+| Short class-score persistence                  | 2.5 s; metadata retains raw model scores                                                          |
+| Observation hysteresis / stability             | Config state enter/exit gates; 2.5 s debounce; 1 s rolling motion maximum                         |
+| Burst grouping                                 | RMS-envelope inter-burst gap .5 s; counts are estimates                                           |
+| Sustained vocal trigger                        | User preference 2–5 min; default 2 min                                                            |
+| Ambient RMS/motion gates                       | Rolling median of ten quiet-audio windows: RMS ×2, motion ×1.5; minimum RMS .02                   |
+| Per-dog relative features                      | Ten bark windows minimum; 25th/75th percentiles, bounded 128-window history                       |
+| Spike / baseline                               | 2.5× baseline, .02 floor, 6 s persistence; baseline exponential weight .02                        |
+| Trigger cooldowns                              | State 20 s, voice start 30 s, sustained 60 s, enter/exit 30 s, spike 45 s, check-in 30 s          |
+| Global gap / first look / check-in / timeout   | 8 s; first look after 1.5 s stable presence; check-in 50 s; 30 s per attempt, 1 retry             |
+| Motion proxy gates                             | Active enter .05 / exit .03; high-motion proxy enter .25 / exit .15; tuned so small dogs register |
+| Presence persistence / calibration warmup      | 1.5 s object-hit hold; up to 10 s initial calibration wait                                        |
+| Acoustic fallback classes                      | Low-certainty engineering gates in `PARAMETERS.acoustic`; independent validation pending          |
+| Clip and savings reference                     | 4 s before + 6 s after; 12 s naive evaluation window                                              |
 
 All numerical gates are in `public/watcher/evidence-config.js`; pure tests inject
 their own settings and test mechanics rather than asserting animal behavior.

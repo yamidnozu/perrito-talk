@@ -15,6 +15,23 @@ export function decide(events, t, session, config = PARAMETERS) {
   const candidates = events.filter((e) =>
     Object.hasOwn(config.cooldowns, e.type),
   );
+  // First reading as soon as the dog is stably present (no state change needed),
+  // then periodic check-ins while it stays present. Engineering timings, not evidence.
+  const present = session.presentSince ?? null;
+  if (
+    present !== null &&
+    session.lastTrigger === undefined &&
+    t - present >= config.firstLook.stableMs
+  )
+    candidates.push({ ...(observation || {}), type: "first_look" });
+  const checkin = session.checkinSeconds ?? config.checkinSeconds;
+  if (
+    present !== null &&
+    checkin > 0 &&
+    session.lastTrigger !== undefined &&
+    t - Math.max(session.lastTrigger, present) >= checkin * 1000
+  )
+    candidates.push({ ...(observation || {}), type: "checkin" });
   if (observation && !observation.baselineOnly) {
     if (
       observation.vocalSince !== null &&

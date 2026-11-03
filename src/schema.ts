@@ -115,6 +115,9 @@ export type WatcherHints = {
     | "dog_exit"
     | "motion_spike"
     | "heartbeat"
+    | "first_look"
+    | "checkin"
+    | "manual"
     | "upload";
   prev_state: string | null;
   new_state: string;
@@ -164,6 +167,9 @@ export function validateWatcher(value: unknown): WatcherHints {
       "dog_exit",
       "motion_spike",
       "heartbeat",
+      "first_look",
+      "checkin",
+      "manual",
       "upload",
     ].includes(w.trigger) ||
     !(w.prev_state === null || state(w.prev_state)) ||
@@ -225,6 +231,9 @@ export function validateWatcher(value: unknown): WatcherHints {
             "dog_exit",
             "motion_spike",
             "heartbeat",
+            "first_look",
+            "checkin",
+            "manual",
           ].includes(type),
       ))
   )

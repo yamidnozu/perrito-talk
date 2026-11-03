@@ -40,8 +40,8 @@ export const PARAMETERS = {
       name: "restless",
       debounceMs: 2500,
       feature: "motion",
-      enter: 0.4,
-      exit: 0.25,
+      enter: 0.25,
+      exit: 0.15,
       below: false,
       scaled: true,
       subtype: false,
@@ -50,8 +50,10 @@ export const PARAMETERS = {
       name: "active",
       debounceMs: 2500,
       feature: "motion",
-      enter: 0.1,
-      exit: 0.06,
+      // Engineering decision (Nov 3): 0.1 missed a small dog's real movement; motion
+      // below the first-10 s ambient gate (median x motionNoiseMultiplier) is zeroed first.
+      enter: 0.05,
+      exit: 0.03,
       below: false,
       scaled: true,
       subtype: false,
@@ -108,7 +110,7 @@ export const PARAMETERS = {
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.
   baseline: { minimumSamples: 20, weight: 0.02 },
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.
-  spike: { factor: 3, floor: 0.025, debounceMs: 6000 },
+  spike: { factor: 2.5, floor: 0.02, debounceMs: 6000 },
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.
   sustainedVocalMs: 120000,
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.
@@ -120,6 +122,9 @@ export const PARAMETERS = {
     dog_exit: 30000,
     motion_spike: 45000,
     heartbeat: 60000,
+    first_look: 0,
+    checkin: 30000,
+    manual: 0,
   },
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.
   triggerPriority: [
@@ -127,8 +132,11 @@ export const PARAMETERS = {
     "vocal_sustained",
     "dog_enter",
     "dog_exit",
+    "first_look",
+    "manual",
     "state_change",
     "motion_spike",
+    "checkin",
     "heartbeat",
   ],
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.
@@ -137,17 +145,25 @@ export const PARAMETERS = {
   globalGapMs: 8000,
   evaluationWindowMs: 12000,
   heartbeatMinutes: 0,
+  // Engineering decisions (measured on a real still dog: no reading ever fired).
+  // First reading once presence holds for stableMs; the clip then uses 8 s of
+  // pre-roll + postMs, so the reading starts ~3.5 s after detection.
+  firstLook: { stableMs: 1500, postMs: 2000 },
+  // Check-in reading while the dog stays present, even with no change (0 = off).
+  checkinSeconds: 50,
+  // Client timeout per AI attempt; one retry, then a visible error.
+  analyzeTimeoutMs: 30000,
   // Engineering decision: per-class gates; label quality is loaded separately from C42.
   classThresholds: {
-    Dog: 0.35,
-    Bark: 0.35,
+    Dog: 0.25,
+    Bark: 0.25,
     Howl: 0.1,
-    Growling: 0.35,
+    Growling: 0.25,
     "Bow-wow": 0.5,
     "Whimper (dog)": 0.6,
     Yip: 0.75,
     Whimper: 0.6,
-    "Canidae, dogs, wolves": 0.35,
+    "Canidae, dogs, wolves": 0.25,
   },
   // Engineering decisions: short class-score persistence bridges inference-window gaps.
   audioScoreHoldMs: 2500,
@@ -188,9 +204,9 @@ export const PARAMETERS = {
     // Engineering cap: allow calibration first, but do not wait forever on vocal input.
     initialWaitMs: 10000,
     minimumSamples: 10,
-    noiseMultiplier: 3,
+    noiseMultiplier: 2,
     // Engineering decision: motion energy and RMS use separate noise scales.
-    motionNoiseMultiplier: 1.25,
+    motionNoiseMultiplier: 1.5,
     relativeLowerQuantile: 0.25,
     relativeUpperQuantile: 0.75,
   },

@@ -183,6 +183,32 @@ describe("watcher mechanics with an injected test configuration", () => {
     s.heartbeat = 2;
     expect(decide(event, 120000, s, config)[0].type).toBe("heartbeat");
   });
+  it("fires first_look once the dog has been present for stableMs, then check-ins while present", () => {
+    const config = testConfig(),
+      s = session();
+    s.presentSince = 1000;
+    expect(decide([], 1000 + config.firstLook.stableMs - 1, s, config)).toEqual(
+      [],
+    );
+    const first = decide([], 1000 + config.firstLook.stableMs, s, config);
+    expect(first[0].type).toBe("first_look");
+    s.lastTrigger = 3000;
+    s.used = 1;
+    const due = 3000 + config.checkinSeconds * 1000;
+    expect(decide([], due - 1, s, config)).toEqual([]);
+    expect(decide([], due, s, config)[0].type).toBe("checkin");
+    s.checkinSeconds = 0;
+    expect(decide([], due + 60000, s, config)).toEqual([]);
+  });
+  it("never fires first_look or check-ins while no dog is present", () => {
+    const config = testConfig(),
+      s = session();
+    s.presentSince = null;
+    expect(decide([], 10000, s, config)).toEqual([]);
+    s.lastTrigger = 0;
+    s.used = 1;
+    expect(decide([], 600000, s, config)).toEqual([]);
+  });
   it("computes saved periodic evaluation windows minus actual calls, bounded at zero", () => {
     const s = session();
     s.used = 1;

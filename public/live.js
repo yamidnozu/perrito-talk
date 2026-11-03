@@ -80,10 +80,13 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
   const root = document.getElementById("liveView"),
     tr = (en, es) => (getLang() === "es" ? es : en);
   root.innerHTML = `<h2 id="liveTitle"></h2><p id="liveHelp"></p>
+  <div class="live-now"><button id="liveAnalyze" class="live-analyze" disabled></button>
+    <p id="liveStep" class="live-step" role="status" aria-live="polite"></p>
+    <section id="liveResult" class="live-result" aria-live="polite" hidden></section></div>
   <div class="live-controls">
     <label><span id="liveCameraLabel"></span><select id="liveCamera"></select></label>
     <label><span id="liveMicLabel"></span><select id="liveMic"></select></label>
-    <label><span id="liveHeartbeatLabel"></span><input id="liveHeartbeat" type="number" min="0" max="60" value="0"></label>
+    <label><span id="liveCheckinLabel"></span><input id="liveCheckin" type="number" min="0" max="600" value="${PARAMETERS.checkinSeconds}"></label>
     <label><span id="liveMaxLabel"></span><input id="liveMax" type="number" min="1" max="100" value="20"></label>
     <label><span id="liveSensitivityLabel"></span><select id="liveSensitivity"><option value="low"></option><option value="medium"></option><option value="high"></option></select></label>
     <label><span id="liveSustainedLabel"></span><input id="liveSustained" type="number" min="2" max="5" value="2"></label>
@@ -138,7 +141,7 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
   const controls = [
     "liveMic",
     "liveMax",
-    "liveHeartbeat",
+    "liveCheckin",
     "liveSensitivity",
     "liveSustained",
     "liveDog",
@@ -180,6 +183,8 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       now = performance.now();
     if (s)
       debug.saved = savedCalls(now, { ...s, used: debug.aiCalls }, s.config);
+    $("liveStep").textContent = stepText(s, now);
+    $("liveAnalyze").disabled = !s?.buffer || !!s?.inFlight;
     $("liveCounter").textContent =
       `${tr("AI calls", "Llamadas a IA")}: ${debug.aiCalls}/${s?.max || $("liveMax").value} · ${tr("AI calls saved", "Llamadas a IA ahorradas")}: ${debug.saved} · ${tr("Verified by SAM, Spark skipped", "Verificado por SAM, Spark omitido")}: ${debug.samVerifiedSkips}`;
     $("liveState").textContent =
@@ -205,6 +210,79 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     $("liveRelative").textContent =
       `${tr("Pitch compared with this dog's baseline", "Tono frente a la línea base de este perro")}: ${{ lower: ["lower than usual", "más grave de lo habitual"], higher: ["higher than usual", "más agudo de lo habitual"], usual: ["usual", "habitual"], unknown: ["not established", "sin establecer"] }[relative][getLang() === "es" ? 1 : 0]}`;
   }
+  function reasonText(types = []) {
+    const names = {
+      first_look: ["dog stably detected", "perro detectado de forma estable"],
+      checkin: ["periodic check-in", "chequeo periódico"],
+      manual: ["manual request", "pedido manual"],
+      vocal_start: ["vocalization started", "empezó a vocalizar"],
+      vocal_sustained: ["sustained vocalization", "vocalización sostenida"],
+      dog_enter: ["dog entered", "el perro entró"],
+      dog_exit: ["dog left", "el perro salió"],
+      state_change: ["state changed", "cambió el estado"],
+      motion_spike: ["motion spike", "pico de movimiento"],
+      heartbeat: ["heartbeat", "comprobación"],
+    };
+    return types
+      .map((x) => names[x]?.[getLang() === "es" ? 1 : 0] || x)
+      .join(" + ");
+  }
+  function errorText(step) {
+    const sec = Math.round((active?.config || config).analyzeTimeoutMs / 1000);
+    return {
+      timeout: tr(
+        `⚠️ The AI took longer than ${sec} s (2 attempts). Tap “Analyze now” to retry.`,
+        `⚠️ La IA tardó más de ${sec} s (2 intentos). Toca «Analizar ahora» para reintentar.`,
+      ),
+      server: tr(
+        `⚠️ Could not analyze (server or network error, 2 attempts)${step.detail ? `: ${step.detail}` : ""}. Tap “Analyze now” to retry.`,
+        `⚠️ No se pudo analizar (error del servidor o de red, 2 intentos)${step.detail ? `: ${step.detail}` : ""}. Toca «Analizar ahora» para reintentar.`,
+      ),
+      clip: tr(
+        "⚠️ Could not prepare the clip from the camera. Check camera and microphone.",
+        "⚠️ No se pudo preparar el clip de la cámara. Revisa cámara y micrófono.",
+      ),
+      limit: tr(
+        "⚠️ Session analysis limit reached. Raise “Max analyses” and restart.",
+        "⚠️ Se alcanzó el máximo de análisis de la sesión. Súbelo y reinicia.",
+      ),
+    }[step.code];
+  }
+  function stepText(s, now) {
+    if (!s) return "";
+    const st = s.step || {},
+      secs = Math.max(0, Math.floor((now - (st.since || now)) / 1000));
+    const f = s.features || {},
+      gates = s.baseline?.gates?.() || {};
+    const watching = () => {
+      const top = Object.entries(f.scores || {})
+        .filter(([k]) => k !== "dog")
+        .sort((a, b) => b[1] - a[1])[0];
+      const sound = top?.[1]
+        ? `${heardText(top[0], getLang()).replace(/^🔊 /, "")} ${Math.round(top[1] * 100)}%`
+        : `${tr("level", "nivel")} ${(f.rms || 0).toFixed(3)}${gates.ready ? ` / ${tr("gate", "umbral")} ${gates.rms.toFixed(3)}` : ""}`;
+      const motion = `${(s.rawMotion || 0).toFixed(3)}${gates.ready ? ` / ${tr("gate", "umbral")} ${gates.motion.toFixed(3)}` : ` (${tr("calibrating", "calibrando")} ${Math.min(10, Math.floor((now - s.startedAt) / 1000))}/10 s)`}`;
+      const next =
+        s.presentSince != null &&
+        s.lastTrigger !== undefined &&
+        s.checkinSeconds
+          ? ` · ${tr("next check-in", "próximo chequeo")} ${Math.max(0, Math.ceil((Math.max(s.lastTrigger, s.presentSince) + s.checkinSeconds * 1000 - now) / 1000))} s`
+          : "";
+      return `👀 ${tr("Watching", "Vigilando")} (${tr("sound", "sonido")} ${sound}, ${tr("motion", "movimiento")} ${motion})${next}`;
+    };
+    switch (st.kind) {
+      case "change":
+        return `⚡ ${tr("Change detected", "Cambio detectado")}: ${reasonText(st.reasons)} · ${tr("recording", "grabando")} ${Math.max(0, Math.ceil((st.post - (now - st.since)) / 1000))} s`;
+      case "analyzing":
+        return `⏳ ${tr("Analyzing…", "Analizando…")} ${secs} s${st.attempt > 1 ? ` · ${tr("retry", "reintento")} ${st.attempt - 1}` : ""}`;
+      case "error":
+        return `${errorText(st)} · ${watching()}`;
+      case "result":
+        return `✅ ${tr("Reading ready", "Lectura lista")} (${((st.ms || 0) / 1000).toFixed(1)} s) · ${watching()}`;
+      default:
+        return watching();
+    }
+  }
   function labels() {
     for (const [id, en, es] of [
       ["liveTitle", "Watcher", "Vigilante"],
@@ -216,10 +294,11 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       ["liveCameraLabel", "Camera", "Cámara"],
       ["liveMicLabel", "Microphone", "Micrófono"],
       [
-        "liveHeartbeatLabel",
-        "Heartbeat (minutes; 0 = off)",
-        "Comprobación (minutos; 0 = apagada)",
+        "liveCheckinLabel",
+        "Check-in while dog present (s; 0 = off)",
+        "Chequeo con perro presente (s; 0 = apagado)",
       ],
+      ["liveAnalyze", "🔍 Analyze now", "🔍 Analizar ahora"],
       ["liveMaxLabel", "Max analyses", "Máximo de análisis"],
       ["liveSensitivityLabel", "Sensitivity", "Sensibilidad"],
       [
@@ -251,6 +330,7 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     const message = $("liveStatus").localMessage;
     if (message) setStatus(...message);
     $("liveOverlay").updateLanguage?.();
+    $("liveResult").updateLanguage?.();
     $("liveBanner").updateLanguage?.();
     refresh();
   }
@@ -435,22 +515,23 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     const t = performance.now(),
       f = s.features;
     // Calibrate locally before baseline selection; continuous vocal input must
-    // not postpone initialization indefinitely.
-    if (
+    // not postpone initialization indefinitely. A stably present dog still gets its
+    // first reading during calibration (first_look needs no state change).
+    const calibrating =
       !s.machine.state &&
       !s.baseline.gates().ready &&
-      t - s.startedAt < s.config.calibration.initialWaitMs
-    )
-      return;
-    const result = s.machine.update(
-      {
-        ...f,
-        motion: s.motionHold.value(t),
-        dogPresent: s.presenceHold.value(t),
-        zone,
-      },
-      t,
-    );
+      t - s.startedAt < s.config.calibration.initialWaitMs;
+    const result = calibrating
+      ? { state: s.machine.state, events: [] }
+      : s.machine.update(
+          {
+            ...f,
+            motion: s.motionHold.value(t),
+            dogPresent: s.presenceHold.value(t),
+            zone,
+          },
+          t,
+        );
     window.__watcher.state = result.state;
     for (const event of result.events.filter((e) => e.type !== "observation")) {
       window.__watcher.events.push({ ...event, t: t - s.startedAt });
@@ -458,62 +539,91 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         window.__watcher.events.shift();
       localEvent(event, s);
     }
-    const triggers = decide(result.events, t, s, s.config);
-    for (const trigger of triggers) {
-      window.__watcher.triggers.push({
-        type: trigger.type,
-        types: trigger.types,
-        t: t - s.startedAt,
-        prev: trigger.prev,
-        next: trigger.next,
-        ...(trigger.merged ? { merged: true } : {}),
-      });
-      const metadata = {
-        trigger: trigger.type,
-        trigger_types: trigger.types,
-        sound_scores: { ...f.scores },
-        prev_state: trigger.prev,
-        new_state: trigger.next,
-        time_in_prev_state_s: trigger.duration || 0,
-        yamnet: f.yamnet || [],
-        motion: s.rawMotion || 0,
-        observations: {
-          vocal_type: result.state?.startsWith("vocalization:")
-            ? result.state.split(":")[1]
-            : "none",
-          bursts: s.bursts,
-          sustained_s: s.vocalSince === null ? 0 : (t - s.vocalSince) / 1000,
-          activity: result.state?.split(":")[0] || "unknown",
-        },
-        centroid_shift: f.centroidShift || 0,
-        bbox: f.bbox || null,
-        dog_present: f.dogPresent ?? null,
-        detector:
-          f.audioStatus === "yamnet" && f.visionStatus === "mediapipe"
-            ? "mediapipe"
-            : "fallback",
-      };
-      if (trigger.merged && s.pendingWatcher) {
-        const reasons = [
-          ...new Set([...s.pendingWatcher.trigger_types, ...trigger.types]),
-        ];
-        const previous = s.pendingWatcher.prev_state;
-        const duration = s.pendingWatcher.time_in_prev_state_s;
-        Object.assign(s.pendingWatcher, metadata, {
-          trigger: s.pendingWatcher.trigger,
-          trigger_types: reasons,
-          prev_state: previous,
-          time_in_prev_state_s: duration,
-        });
-        continue;
-      }
-      s.inFlight = true;
-      s.pendingUntil = t + 6000;
-      s.pendingWatcher = metadata;
-      // Engineering decision: collect six seconds after the observed trigger.
-      s.postroll = setTimeout(() => void submit(s, metadata, t), 6000);
-    }
+    for (const trigger of decide(result.events, t, s, s.config))
+      fire(s, trigger, t, result.state);
   }
+  function metadataFor(s, trigger, t, state) {
+    const f = s.features;
+    return {
+      trigger: trigger.type,
+      trigger_types: trigger.types,
+      sound_scores: { ...f.scores },
+      prev_state: trigger.prev ?? state ?? null,
+      new_state: trigger.next ?? state ?? "calibrating",
+      time_in_prev_state_s: trigger.duration || 0,
+      yamnet: f.yamnet || [],
+      motion: s.rawMotion || 0,
+      observations: {
+        vocal_type: state?.startsWith("vocalization:")
+          ? state.split(":")[1]
+          : "none",
+        bursts: s.bursts,
+        sustained_s: s.vocalSince === null ? 0 : (t - s.vocalSince) / 1000,
+        activity: state?.split(":")[0] || "unknown",
+      },
+      centroid_shift: f.centroidShift || 0,
+      bbox: f.bbox || null,
+      dog_present: f.dogPresent ?? null,
+      detector:
+        f.audioStatus === "yamnet" && f.visionStatus === "mediapipe"
+          ? "mediapipe"
+          : "fallback",
+    };
+  }
+  const QUICK = ["first_look", "manual", "checkin"];
+  function fire(s, trigger, t, state) {
+    window.__watcher.triggers.push({
+      type: trigger.type,
+      types: trigger.types,
+      t: t - s.startedAt,
+      prev: trigger.prev,
+      next: trigger.next,
+      ...(trigger.merged ? { merged: true } : {}),
+    });
+    const metadata = metadataFor(s, trigger, t, state);
+    if (trigger.merged && s.pendingWatcher) {
+      const reasons = [
+        ...new Set([...s.pendingWatcher.trigger_types, ...trigger.types]),
+      ];
+      const previous = s.pendingWatcher.prev_state;
+      const duration = s.pendingWatcher.time_in_prev_state_s;
+      Object.assign(s.pendingWatcher, metadata, {
+        trigger: s.pendingWatcher.trigger,
+        trigger_types: reasons,
+        prev_state: previous,
+        time_in_prev_state_s: duration,
+      });
+      return;
+    }
+    // Engineering decision: change triggers collect 6 s after the trigger. First-look,
+    // check-in and manual readings use more pre-roll and a short post-roll so the
+    // reading starts within seconds; the clip is still 10 s long.
+    const post = trigger.types.some((x) => QUICK.includes(x))
+      ? s.config.firstLook.postMs
+      : 6000;
+    const clipAt = t + post - 6000;
+    s.inFlight = true;
+    s.pendingUntil = t + post;
+    s.pendingWatcher = metadata;
+    s.step = { kind: "change", reasons: trigger.types, since: t, post };
+    refresh();
+    s.postroll = setTimeout(() => void submit(s, metadata, clipAt), post);
+  }
+  $("liveAnalyze").onclick = () => {
+    const s = active;
+    if (!s?.buffer) return;
+    if (s.inFlight) return;
+    if (s.used >= s.max) {
+      s.step = { kind: "error", code: "limit", since: performance.now() };
+      return refresh();
+    }
+    const t = performance.now();
+    s.lastTrigger = t;
+    s.used++;
+    s.lastByType ||= {};
+    s.lastByType.manual = t;
+    fire(s, { type: "manual", types: ["manual"] }, t, s.machine?.state);
+  };
   async function submit(s, watcher, t) {
     if (active !== s) return;
     delete s.pendingUntil;
@@ -523,23 +633,36 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       row.textContent = tr("Analyzing…", "Analizando…");
     };
     row.updateLanguage();
+    s.step = { kind: "analyzing", since: performance.now() };
+    refresh();
+    let clip;
     try {
-      const clip = await s.buffer.build(t);
+      clip = await s.buffer.build(t);
       if (active !== s) return;
       window.__watcher.aiCalls++;
-      const r = await api(
-        "analyze",
-        {
-          lang: getLang(),
-          source: "live",
-          context: {},
-          context_mode: s.contextMode,
-          ...clip,
-          watcher,
-          baseline: s.baseline.summary(),
-        },
-        new URLSearchParams(location.search).get("watcher-dry") === "1",
-      );
+      const body = {
+        lang: getLang(),
+        source: "live",
+        context: {},
+        context_mode: s.contextMode,
+        ...clip,
+        watcher,
+        baseline: s.baseline.summary(),
+      };
+      const dry =
+        new URLSearchParams(location.search).get("watcher-dry") === "1";
+      // Never hang silently: per-attempt timeout, one retry, then a visible error.
+      let r, lastError;
+      for (let attempt = 1; attempt <= 2 && !r; attempt++) {
+        s.step.attempt = attempt;
+        try {
+          r = await api("analyze", body, dry, s.config.analyzeTimeoutMs);
+        } catch (e) {
+          lastError = e;
+          if (active !== s) return;
+        }
+      }
+      if (!r) throw lastError;
       if (active !== s) return;
       if (r.sam?.frames_checked > 0) {
         s.sam = r.sam;
@@ -566,6 +689,22 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         renderReading(row, r, { lang: getLang(), media: clip.media });
       };
       row.updateLanguage();
+      const card = $("liveResult");
+      card.hidden = false;
+      card.updateLanguage = () => {
+        renderReading(card, r, { lang: getLang(), media: clip.media });
+        const when = document.createElement("small");
+        when.className = "live-result-when";
+        when.textContent = `${clock(Date.now())} · ${reasonText(watcher.trigger_types)}`;
+        card.prepend(when);
+      };
+      card.updateLanguage();
+      s.step = {
+        kind: "result",
+        since: performance.now(),
+        ms: performance.now() - s.step.since,
+      };
+      window.__watcher.readings = (window.__watcher.readings || 0) + 1;
       const overlay = $("liveOverlay");
       overlay.updateLanguage = () => {
         overlay.replaceChildren();
@@ -616,10 +755,19 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
           } catch {}
         }
       }
-    } catch {
+    } catch (e) {
       if (active === s) {
+        const code =
+          e?.name === "AbortError" ? "timeout" : clip ? "server" : "clip";
+        s.step = {
+          kind: "error",
+          code,
+          detail: e?.message || "",
+          since: performance.now(),
+        };
+        window.__watcher.errors = (window.__watcher.errors || 0) + 1;
         row.updateLanguage = () => {
-          row.textContent = tr("Analysis failed.", "Falló el análisis.");
+          row.textContent = errorText(s.step);
         };
         row.updateLanguage();
       }
@@ -635,22 +783,23 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
   $("liveStart").onclick = async () => {
     if (active) return;
     const max = Number($("liveMax").value),
-      heartbeat = Number($("liveHeartbeat").value),
+      checkin = Number($("liveCheckin").value),
       sustained = Number($("liveSustained").value);
     if (
       !Number.isInteger(max) ||
       max < 1 ||
       max > 100 ||
-      !Number.isFinite(heartbeat) ||
-      heartbeat < 0 ||
-      heartbeat > 60 ||
+      !Number.isFinite(checkin) ||
+      checkin < 0 ||
+      checkin > 600 ||
+      (checkin > 0 && checkin < 20) ||
       !Number.isFinite(sustained) ||
       sustained < 2 ||
       sustained > 5
     ) {
       setStatus(
-        "Use 1–100 analyses, 0–60 heartbeat minutes and 2–5 sustained minutes.",
-        "Usa 1–100 análisis, 0–60 minutos de comprobación y 2–5 minutos sostenidos.",
+        "Use 1–100 analyses, a 0 or 20–600 s check-in and 2–5 sustained minutes.",
+        "Usa 1–100 análisis, chequeo de 0 o 20–600 s y 2–5 minutos sostenidos.",
       );
       return;
     }
@@ -659,7 +808,10 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       startedAt: performance.now(),
       used: 0,
       max,
-      heartbeat,
+      heartbeat: 0,
+      checkinSeconds: checkin,
+      presentSince: null,
+      step: { kind: "start", since: performance.now() },
       inFlight: false,
       sensitivity,
       config: { ...config, sustainedVocalMs: sustained * 60000 },
@@ -677,6 +829,9 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     $("liveTimeline").replaceChildren();
     $("liveOverlay").replaceChildren();
     $("liveOverlay").updateLanguage = null;
+    $("liveResult").replaceChildren();
+    $("liveResult").hidden = true;
+    $("liveResult").updateLanguage = null;
     $("liveBanner").updateLanguage = null;
     $("liveBanner").hidden = true;
     $("liveStart").disabled = true;
@@ -806,7 +961,12 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
               now: () => performance.now(),
             });
           Object.assign(s.features, features);
-          s.presenceHold.update(features.dogPresent, performance.now());
+          const held = s.presenceHold.update(
+            features.dogPresent,
+            performance.now(),
+          );
+          if (held === true) s.presentSince ??= performance.now();
+          else s.presentSince = null;
           const gate = s.baseline.gates().motion;
           // The state machine receives ambient-adjusted motion; UI retains raw energy.
           s.rawMotion = features.motion;

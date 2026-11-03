@@ -369,9 +369,9 @@ function lock(value) {
       value || (["analyze", "deepAnalyze"].includes(id) && !selected);
 }
 
-async function api(path, data, mock = false) {
+async function api(path, data, mock = false, timeoutMs = 105000) {
   const controller = new AbortController(),
-    timer = setTimeout(() => controller.abort(), 105000);
+    timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`/api/${path}${mock ? "?mock=1" : ""}`, {
       method: "POST",
@@ -380,7 +380,8 @@ async function api(path, data, mock = false) {
       signal: controller.signal,
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(t("error"));
+    if (!response.ok)
+      throw new Error(`${t("error")} (HTTP ${response.status})`);
     return body;
   } finally {
     clearTimeout(timer);

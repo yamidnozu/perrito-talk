@@ -922,3 +922,41 @@ dialog img {
   display: inline-block;
   padding: 0.15rem 0.4rem;
 }
+
+/* Live: always-visible step status, big manual trigger and a top result card. */
+.live-now {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0.75rem 0 1rem;
+}
+.live-analyze {
+  font-size: 1.25rem;
+  font-weight: 700;
+  padding: 0.9rem 1.2rem;
+  min-height: 3.2rem;
+  border-radius: 0.8rem;
+  width: 100%;
+}
+.live-analyze:disabled {
+  opacity: 0.55;
+}
+.live-step {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.6rem;
+  background: rgba(105, 186, 255, 0.12);
+  font-weight: 600;
+  min-height: 1.5em;
+}
+.live-result {
+  padding: 1rem;
+  border: 2px solid #72e5a1;
+  border-radius: 0.9rem;
+  background: rgba(114, 229, 161, 0.08);
+  font-size: 1.05rem;
+}
+.live-result-when {
+  display: block;
+  opacity: 0.75;
+  margin-bottom: 0.4rem;
+}
