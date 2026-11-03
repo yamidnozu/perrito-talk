@@ -1,6 +1,7 @@
 import { createMotionHold, createPresenceHold } from "./watcher/motion.js";
 import { certaintyWord, stateLabel, observedTexts } from "./evidence-utils.js";
 import { cameraHeuristics, alertTitle } from "./camera-heuristics.js";
+import { createFlight } from "./watcher/flight.js";
 import { newAlerts } from "./live-logic.js";
 import { mountDevicePicker, openMedia, videoConstraints } from "./devices.js";
 import { startAudio } from "./watcher/audio.js";
@@ -110,6 +111,14 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     getLang,
     "liveContextMode",
   );
+  // Keep stacks of uncaught errors for diagnosis (headless tests read this).
+  window.__liveErrors = [];
+  const keepError = (error) => {
+    window.__liveErrors.push(String(error?.stack || error?.message || error));
+    if (window.__liveErrors.length > 20) window.__liveErrors.shift();
+  };
+  window.addEventListener("error", (e) => keepError(e.error || e.message));
+  window.addEventListener("unhandledrejection", (e) => keepError(e.reason));
   let active = null,
     config = PARAMETERS,
     zone = null,
@@ -183,12 +192,16 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       now = performance.now();
     if (s)
       debug.saved = savedCalls(now, { ...s, used: debug.aiCalls }, s.config);
-    $("liveStep").textContent = stepText(s, now);
-    $("liveAnalyze").disabled = !s?.buffer || !!s?.inFlight;
+    $("liveStep").textContent =
+      stepText(s, now) +
+      (s?.flight?.queued
+        ? tr(" · 🔁 Manual reading queued", " · 🔁 Lectura manual en cola")
+        : "");
+    $("liveAnalyze").disabled = !s?.buffer || !!s?.flight?.queued;
     $("liveCounter").textContent =
       `${tr("AI calls", "Llamadas a IA")}: ${debug.aiCalls}/${s?.max || $("liveMax").value} · ${tr("AI calls saved", "Llamadas a IA ahorradas")}: ${debug.saved} · ${tr("Verified by SAM, Spark skipped", "Verificado por SAM, Spark omitido")}: ${debug.samVerifiedSkips}`;
     $("liveState").textContent =
-      `${stateName(debug.state)}${(s?.config || config).source === "provisional" ? " · provisional" : ""}${s?.machine.state ? ` · ${Math.floor((now - s.machine.since) / 1000)} s` : ""}`;
+      `${stateName(debug.state)}${(s?.config || config).source === "provisional" ? " · provisional" : ""}${s?.machine?.state ? ` · ${Math.floor((now - s.machine.since) / 1000)} s` : ""}`;
     $("liveRms").value = f.rms || 0;
     $("liveRmsValue").textContent = (f.rms || 0).toFixed(3);
     const top = Object.entries(f.scores || {})
@@ -424,6 +437,7 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         s.config,
       );
       clearTimeout(s.postroll);
+      s.flight?.clear();
       clearInterval(s.frameTimer);
       clearInterval(s.uiTimer);
       s.audioCapture?.stop();
@@ -512,6 +526,9 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
   window.addEventListener("resize", draw);
   function evaluate(s) {
     if (active !== s) return;
+    // Guard: sensors can report before start() has built the machine/baseline,
+    // and after a camera switch or stop.
+    if (active !== s || !s.machine || !s.baseline) return;
     const t = performance.now(),
       f = s.features;
     // Calibrate locally before baseline selection; continuous vocal input must
@@ -532,14 +549,17 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
           },
           t,
         );
-    window.__watcher.state = result.state;
-    for (const event of result.events.filter((e) => e.type !== "observation")) {
+    if (!result) return;
+    window.__watcher.state = result.state ?? null;
+    for (const event of (result.events || []).filter(
+      (e) => e.type !== "observation",
+    )) {
       window.__watcher.events.push({ ...event, t: t - s.startedAt });
       if (window.__watcher.events.length > 1000)
         window.__watcher.events.shift();
       localEvent(event, s);
     }
-    for (const trigger of decide(result.events, t, s, s.config))
+    for (const trigger of decide(result.events || [], t, s, s.config))
       fire(s, trigger, t, result.state);
   }
   function metadataFor(s, trigger, t, state) {
@@ -602,17 +622,21 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       ? s.config.firstLook.postMs
       : 6000;
     const clipAt = t + post - 6000;
-    s.inFlight = true;
+    const id = s.flight.acquire();
+    if (id === null) return; // another reading owns the lock
     s.pendingUntil = t + post;
     s.pendingWatcher = metadata;
     s.step = { kind: "change", reasons: trigger.types, since: t, post };
     refresh();
-    s.postroll = setTimeout(() => void submit(s, metadata, clipAt), post);
+    s.postroll = setTimeout(() => void submit(s, metadata, clipAt, id), post);
   }
-  $("liveAnalyze").onclick = () => {
-    const s = active;
-    if (!s?.buffer) return;
-    if (s.inFlight) return;
+  function manual(s) {
+    if (active !== s || !s.buffer) return;
+    if (s.flight.busy) {
+      // Check-in/trigger already running: queue one manual reading after it.
+      s.flight.enqueue({ type: "manual" });
+      return refresh();
+    }
     if (s.used >= s.max) {
       s.step = { kind: "error", code: "limit", since: performance.now() };
       return refresh();
@@ -622,10 +646,11 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     s.used++;
     s.lastByType ||= {};
     s.lastByType.manual = t;
-    fire(s, { type: "manual", types: ["manual"] }, t, s.machine?.state);
-  };
-  async function submit(s, watcher, t) {
-    if (active !== s) return;
+    fire(s, { type: "manual", types: ["manual"] }, t, s.machine?.state ?? null);
+  }
+  $("liveAnalyze").onclick = () => manual(active);
+  async function submit(s, watcher, t, id) {
+    if (active !== s) return void s.flight?.release(id);
     delete s.pendingUntil;
     delete s.pendingWatcher;
     const row = rowFor();
@@ -636,6 +661,12 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     s.step = { kind: "analyzing", since: performance.now() };
     refresh();
     let clip;
+    // Diagnostics: proves readings never overlap (must stay <= 1).
+    window.__watcher.running = (window.__watcher.running || 0) + 1;
+    window.__watcher.maxRunning = Math.max(
+      window.__watcher.maxRunning || 0,
+      window.__watcher.running,
+    );
     try {
       clip = await s.buffer.build(t);
       if (active !== s) return;
@@ -772,11 +803,12 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         row.updateLanguage();
       }
     } finally {
-      s.inFlight = false;
+      window.__watcher.running--;
+      const next = s.flight.release(id);
       if (active === s && s.used >= s.max) {
         stop();
         setStatus("Session limit reached.", "Límite de sesión alcanzado.");
-      }
+      } else if (next && active === s) manual(s);
       refresh();
     }
   }
@@ -812,7 +844,10 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       checkinSeconds: checkin,
       presentSince: null,
       step: { kind: "start", since: performance.now() },
-      inFlight: false,
+      flight: createFlight(),
+      get inFlight() {
+        return this.flight.busy;
+      },
       sensitivity,
       config: { ...config, sustainedVocalMs: sustained * 60000 },
       features: { dogPresent: null },

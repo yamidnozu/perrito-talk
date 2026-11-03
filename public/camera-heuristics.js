@@ -7,7 +7,7 @@ export function cameraHeuristics(input) {
   const es = input.lang === "es";
   const alerts = [];
   for (const c of input.clips) {
-    if (c.vet_alert.flag)
+    if (c?.vet_alert?.flag)
       alerts.push({
         type: "pain_signs",
         severity: c.vet_alert.urgency === "emergency" ? "urgent" : "warning",
@@ -20,7 +20,7 @@ export function cameraHeuristics(input) {
       c.context_mode === "i_left" &&
       c.interpretations?.some(
         (i) =>
-          i.state === "compatible_with_separation_related_problem" &&
+          i?.state === "compatible_with_separation_related_problem" &&
           !i.conditional,
       )
     )

@@ -270,7 +270,7 @@ export function loadEvidence(json, overrides = {}) {
         Array.isArray(s.supports) &&
         s.supports.every(
           (x) =>
-            typeof x.state === "string" &&
+            typeof x?.state === "string" &&
             Object.hasOwn(json.certainty_scale, x.certainty),
         ) &&
         Array.isArray(s.required_context),

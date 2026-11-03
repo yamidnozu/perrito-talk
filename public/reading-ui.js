@@ -118,7 +118,7 @@ export function renderReading(root, r, { lang = "en", media = [] } = {}) {
   meanings.append(
     element("h3", es ? "Lo que podría significar" : "Could mean"),
   );
-  for (const i of r.interpretations || []) {
+  for (const i of (r.interpretations || []).filter(Boolean)) {
     const p = element(
       "p",
       `${stateLabel(i.state, lang)} · ${certaintyWord(i.certainty, lang)}${i.conditional ? (es ? " · falta contexto" : " · context needed") : ""}`,
