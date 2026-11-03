@@ -1,4 +1,5 @@
 import { createBaseline } from "./watcher/baseline.js";
+import { prewarmModels } from "./watcher/vision.js";
 import { certaintyWord, dogLineFor, observedTexts } from "./evidence-utils.js";
 import { renderReading, mountContext } from "./reading-ui.js";
 import { mountDevicePicker, openMedia } from "./devices.js";
@@ -339,7 +340,12 @@ function tab(diary, camera = false, realtime = false) {
 $("readTab").onclick = () => tab(false);
 $("diaryTab").onclick = () => tab(true);
 $("cameraTab").onclick = () => tab(false, true);
-$("liveTab").onclick = () => tab(false, false, true);
+$("liveTab").onclick = () => {
+  tab(false, false, true);
+  prewarmModels([
+    "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite",
+  ]);
+};
 
 function lock(value) {
   busy = value;

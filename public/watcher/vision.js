@@ -4,6 +4,20 @@ const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.0";
 const MODEL =
   "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite";
 
+let warmed = false;
+// Lazy warm-up when the Live tab opens: start the large downloads in parallel so
+// the HTTP cache (shared with the worker) is hot before the user presses Start.
+export function prewarmModels(extra = []) {
+  if (warmed || typeof fetch !== "function") return;
+  warmed = true;
+  for (const url of [
+    `${CDN}/wasm/vision_wasm_module_internal.wasm`,
+    MODEL,
+    ...extra,
+  ])
+    fetch(url, { mode: "cors", priority: "low" }).catch(() => {});
+}
+
 // Shared by worker and main-thread fallback. Motion/centroid are raw measurements.
 export function createVisionEngine({
   sensitivity = "medium",
@@ -22,25 +36,48 @@ export function createVisionEngine({
     previousCenter,
     failure,
     stopped = false;
+  const animals = config.presence.animalClasses || ["dog"];
+  const status = { state: "loading", delegate: null, ms: null, error: null };
+  const t0 = typeof performance === "object" ? performance.now() : 0;
+  let createCpu = null;
   const ready = (async () => {
     try {
       const { FilesetResolver, ObjectDetector } = await import(
         `${CDN}/vision_bundle.mjs`
       );
       const files = await FilesetResolver.forVisionTasks(`${CDN}/wasm`, true);
-      const loaded = await ObjectDetector.createFromOptions(files, {
-        baseOptions: { modelAssetPath: MODEL },
+      createCpu = () => ObjectDetector.createFromOptions(files, options("CPU"));
+      const options = (delegate) => ({
+        baseOptions: { modelAssetPath: MODEL, delegate },
         runningMode: "VIDEO",
-        categoryAllowlist: ["dog"],
-        scoreThreshold:
+        scoreThreshold: Math.min(
+          0.9,
           config.presence.detectorScore * sensitivityScale(sensitivity, config),
-        maxResults: 1,
+        ),
+        maxResults: 3,
       });
+      let loaded;
+      // GPU first when available; any delegate failure falls back to CPU (XNNPACK).
+      try {
+        // Measured: in headless/SwiftShader the GPU delegate loads but returns no detections,
+        // so CPU (XNNPACK, ~60 ms/frame at 3 fps) is the default; GPU is opt-in via config.
+        if (config.presence.delegate !== "GPU") throw new Error("cpu-default");
+        loaded = await ObjectDetector.createFromOptions(files, options("GPU"));
+        status.delegate = "GPU";
+      } catch {
+        loaded = await createCpu();
+        status.delegate = "CPU";
+      }
+      status.state = "ready";
+      status.ms = Math.round(performance.now() - t0);
       if (stopped) loaded.close();
       else detector = loaded;
     } catch (e) {
       failure = e.message; /* Motion-only mode remains available. */
+      status.state = "failed";
+      status.error = e.message;
     }
+    return status;
   })();
   return {
     ready,
@@ -50,12 +87,28 @@ export function createVisionEngine({
         detection = detector
           ?.detectForVideo(frame, t)
           .detections.find((d) =>
-            d.categories.some((c) => c.categoryName === "dog"),
+            animals.includes(d.categories[0]?.categoryName),
           );
       } catch (e) {
         failure = e.message;
         detector?.close();
         detector = null;
+        // A GPU delegate can fail only at inference time (mobile WebGL); retry once on CPU.
+        if (status.delegate === "GPU" && createCpu) {
+          status.delegate = "CPU";
+          status.state = "loading";
+          createCpu()
+            .then((cpu) => {
+              if (stopped) return cpu.close();
+              detector = cpu;
+              failure = undefined;
+              status.state = "ready";
+            })
+            .catch((err) => {
+              status.state = "failed";
+              status.error = err.message;
+            });
+        } else status.state = "failed";
       }
       const width = frame.videoWidth || frame.width,
         height = frame.videoHeight || frame.height;
@@ -112,7 +165,9 @@ export function createVisionEngine({
         bbox,
         dogPresent: detector ? !!bbox : null,
         dogScore: detection?.categories[0]?.score || 0,
+        dogLabel: detection?.categories[0]?.categoryName || null,
         visionStatus: detector ? "mediapipe" : "fallback",
+        modelStatus: { ...status },
         visionError: failure,
       };
     },

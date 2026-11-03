@@ -88,7 +88,23 @@ export const PARAMETERS = {
     growl: "growl",
   },
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.
-  presence: { motionThreshold: 0.025, detectorScore: 0.35 },
+  // Engineering decision (measured, not evidence): EfficientDet-Lite0 (COCO) often labels
+  // real dogs as cow/horse/bear/cat on our clips (scores 0.45-0.68), so presence accepts
+  // any of these quadruped classes at a permissive 0.25 score. See README "Watcher".
+  presence: {
+    motionThreshold: 0.025,
+    detectorScore: 0.25,
+    delegate: "CPU",
+    animalClasses: [
+      "dog",
+      "cat",
+      "cow",
+      "horse",
+      "sheep",
+      "bear",
+      "teddy bear",
+    ],
+  },
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.
   baseline: { minimumSamples: 20, weight: 0.02 },
   // Engineering decision: configurable; evidence provides no validated numeric cutoff.

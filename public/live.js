@@ -17,6 +17,15 @@ import {
   contextName,
 } from "./reading-ui.js";
 /** Localized "🔊 heard: …" chip text for an acoustic hint or vocalization type. */
+function modelLine(f, tr) {
+  const m = f.modelStatus;
+  if (!m || m.state === "loading")
+    return `⏳ ${tr("Loading models…", "Cargando modelos…")}`;
+  if (m.state === "failed")
+    return `⚠️ ${tr("Detector unavailable", "Detector no disponible")}`;
+  return `✅ ${tr("Models ready", "Modelos listos")}${m.ms ? ` (${(m.ms / 1000).toFixed(1)} s)` : ""}`;
+}
+
 export function heardText(kind, lang) {
   const es = {
     yip: "ladrido agudo",
@@ -185,9 +194,9 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     $("liveMotion").textContent =
       `${tr("Motion", "Movimiento")}: ${(s?.rawMotion || 0).toFixed(3)} · ${tr("Centroid displacement", "Desplazamiento del centroide")}: ${(f.centroidShift || 0).toFixed(3)}`;
     $("livePresence").textContent =
-      `${tr("Dog in frame", "Perro en cuadro")}: ${f.dogPresent == null ? tr("unknown (motion only)", "desconocido (solo movimiento)") : f.dogPresent ? tr("yes", "sí") : tr("no", "no")} · ${tr("detector score", "puntaje del detector")}: ${(f.dogScore || 0).toFixed(2)}`;
+      `${f.dogPresent == null ? `${tr("Dog", "Perro")}: ${tr("unknown (motion only)", "desconocido (solo movimiento)")}` : f.dogPresent ? `✅ ${tr("Dog detected", "Perro detectado")}${f.dogLabel && f.dogLabel !== "dog" ? ` (${tr("seen as", "visto como")} ${f.dogLabel})` : ""}` : `⬜ ${tr("Dog not detected", "Perro no detectado")}`} · ${tr("detector score", "puntaje del detector")}: ${(f.dogScore || 0).toFixed(2)}`;
     $("liveDetector").textContent =
-      `${tr("Detectors", "Detectores")}: ${f.audioStatus === "yamnet" ? "YAMNet" : tr("acoustics fallback", "acústica alternativa")} / ${f.visionStatus === "mediapipe" ? "EfficientDet" : tr("motion only", "solo movimiento")}`;
+      `${modelLine(f, tr)} · ${tr("Detectors", "Detectores")}: ${f.audioStatus === "yamnet" ? "YAMNet" : tr("acoustics fallback", "acústica alternativa")} / ${f.visionStatus === "mediapipe" ? `EfficientDet${f.modelStatus?.delegate ? ` (${f.modelStatus.delegate})` : ""}` : tr("motion only", "solo movimiento")}`;
     const minutes = s?.vocalSince != null ? (now - s.vocalSince) / 60000 : 0;
     $("liveVocal").textContent =
       `${tr("Bursts", "Tandas")}: ${s?.bursts || 0} · ${tr("Continuous vocalization (minutes)", "Vocalización continua (minutos)")}: ${minutes.toFixed(2)}`;

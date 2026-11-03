@@ -37,12 +37,14 @@ Without `MODEL_API_KEY`, or with `?mock=1`, the APIs return explicitly marked de
 
 Standard-mode prices checked against [Meta pricing](https://dev.meta.ai/docs/pricing-rate-limits)
 on 2026-11-03. Local watching never calls these services until a trigger. Enrichments
-also run for explicit upload/camera analyses; SAM and ASR run in parallel before Spark.
+run for explicit upload/camera analyses, where SAM and ASR run in parallel before Spark.
+**Live readings never call SAM**: ASR runs in parallel with Spark and only feeds
+`interpret.ts`, so a live reading costs one Spark round trip.
 
 | Model                          | ID                              | What it does in PerritoTalk                      | Why                                                           | Cost                                                              |
 | ------------------------------ | ------------------------------- | ------------------------------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Muse Spark 1.3                 | `muse-spark-1.3`                | Strict observable descriptors; default summaries | Interpretation stays in evidence-backed code                  | $1.25 input / $4.25 output per million tokens; cached input $0.15 |
-| SAM 3.1                        | `sam-3.1`                       | Locates dogs in up to two middle keyframes       | Location hints; live-only negative gate                       | $2.50 / 1,000 images; two frames cost $0.005                      |
+| SAM 3.1                        | `sam-3.1`                       | Locates dogs in up to two middle keyframes       | Location hints (uploads only)                                 | $2.50 / 1,000 images; two frames cost $0.005                      |
 | Muse Voice Transcribe          | `muse-voice-transcribe-1.0`     | Diarized human speech, filtered turns            | Context and human/dog whimper caveats                         | $0.18 / hour of processed audio                                   |
 | Muse Image                     | `muse-image-1.0`                | Share card; canvas fallback retained             | Optional illustrated keepsake                                 | $0.01 / generated image                                           |
 | Muse Wonder                    | `muse-wonder-1.0`               | Optional day/pattern summaries                   | Awaiting owner A/B decision; Spark remains default            | $4 input / $20 output per million tokens; cached input $0.20      |
@@ -74,11 +76,8 @@ beside the dog. With **I left** and qualifying speech, the separation pattern is
 blocked and Still unknown asks who was with the dog. Whimper/human-voice ambiguity
 is disclosed (AudioSet C42), with certainty capped at low.
 
-The **live-only** gate skips Spark only when every checked SAM frame has zero dogs
-above its gate and no dog sound exceeds its class gate. Upload/camera readings
-always continue to Spark. `Verified by SAM, Spark skipped` is a separate counter;
-a negative verification releases the Spark budget reservation. These requests still
-incur SAM/ASR costs: the saved counter measures Spark calls, not free verification.
+There is no SAM gate on live readings any more: it added seconds of latency and could
+skip readings of real dogs. Upload/camera readings always continue to Spark.
 The server never logs transcripts, masks, request payloads or credentials.
 
 `SUMMARY_MODEL` accepts `muse-spark-1.3` (default) or `muse-wonder-1.0`, for both
@@ -243,12 +242,9 @@ flowchart LR
   B --> C[Observation state machine: hysteresis + debounce]
   C --> D[Triggers: cooldowns + budget + optional heartbeat]
   D --> E[4 s pre-roll + 6 s post-roll + raw metadata]
-  E --> S[SAM 3.1: up to two middle keyframes]
-  E --> V[Muse Voice Transcribe: filtered human turns]
-  S --> Q{Live negative SAM + no dog sound?}
-  Q -->|yes| K[Local observation: Spark skipped]
-  Q -->|no / fail open| F[Muse Spark: observable descriptors only]
-  V --> F
+  E --> F[Muse Spark: observable descriptors only]
+  E --> V[Muse Voice Transcribe, in parallel: filtered human turns]
+  V --> G
   F --> G[interpret.ts with evidence.json + speech context]
   G --> H[AI timeline + cited interpretations + alerts]
 ```
@@ -336,6 +332,17 @@ The 10-clip real evaluation is separate and is not run by this test. The updated
 word certainty and alerts; `CONTEXT_MODE` defaults to `at_home`.
 
 ## Science & limitations
+
+**On-device dog presence (engineering threshold, not science).** EfficientDet-Lite0
+(COCO) often labels real dogs as `cow`, `horse`, `bear` or `cat` (measured on our clips:
+cow 0.68, horse 0.66). Presence therefore accepts that animal set at score ≥ **0.25**
+(`presence.detectorScore`, `presence.animalClasses` in `evidence-config.js`). The CPU
+(XNNPACK) delegate is the default: in headless Chromium the GPU delegate loaded but
+returned no detections; GPU is opt-in (`presence.delegate`), and inference errors
+fall back to CPU. Known limit: small, distant or very dark dogs can still go undetected
+(two of our clips score 0 with Lite0 and Lite2); audio (YAMNet) and motion still trigger.
+Models (~23 MB: vision wasm 14 MB, EfficientDet 4.5 MB, YAMNet 4 MB) start downloading
+when the Live tab opens; the UI shows "Cargando modelos…" until they are ready.
 
 `public/evidence.json` is the single scientific source, imported directly by
 `src/evidence.ts` with `resolveJsonModule` and bundled by Wrangler. The client fetches

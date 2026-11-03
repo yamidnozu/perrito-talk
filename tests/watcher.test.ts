@@ -339,3 +339,12 @@ describe("presence persistence and candidate hysteresis", () => {
     expect(machine.update(features(0.5), 5500).state).toBe("active");
   });
 });
+
+describe("dog presence engineering threshold", () => {
+  it("accepts COCO quadruped confusions at a permissive score", async () => {
+    const { PARAMETERS } = await import("../public/watcher/evidence-config.js");
+    expect(PARAMETERS.presence.detectorScore).toBeLessThanOrEqual(0.3);
+    for (const label of ["dog", "cat", "cow", "horse", "bear"])
+      expect(PARAMETERS.presence.animalClasses).toContain(label);
+  });
+});

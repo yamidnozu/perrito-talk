@@ -1,4 +1,4 @@
-import { locateDogs, hasDogSound } from "./sam";
+import { locateDogs } from "./sam";
 import { transcribeSpeech, ASR_FILTER } from "./asr";
 import { descriptorSchema, type Descriptors } from "./descriptors";
 import { interpret } from "./interpret";
@@ -120,14 +120,8 @@ export default {
             ...mockReading(input),
             acoustic_hints: input.acoustic_hints,
           });
-        const [sam, human_speech] = await Promise.all([
-          enabled(env.USE_SAM)
-            ? locateDogs(
-                env.MODEL_API_KEY!,
-                input.media,
-                setting(env.SAM_MIN_CONFIDENCE, 0.5, 0, 1),
-              ).catch(() => null)
-            : null,
+        const live = input.source === "live";
+        const asr = () =>
           enabled(env.USE_ASR)
             ? transcribeSpeech(env.MODEL_API_KEY!, input.media, {
                 minimumTurnMs: setting(
@@ -143,22 +137,24 @@ export default {
                   100,
                 ),
               }).catch(() => null)
-            : null,
-        ]);
-        if (
-          input.source === "live" &&
-          sam &&
-          sam.frames_checked > 0 &&
-          sam.dogs === 0 &&
-          !hasDogSound(input.watcher)
-        )
-          return json({
-            skipped: true,
-            reason: "sam_no_dog",
-            sam,
-            human_speech,
-            mode: "live",
-          });
+            : null;
+        // Live stays on the fast path: no SAM, and ASR runs in parallel with Spark
+        // (it only feeds the code interpretation, not the prompt). Uploads keep the
+        // SAM/ASR pre-pass so Spark gets location and speech hints.
+        const asrLive = live ? asr() : null;
+        const [sam, preSpeech] = live
+          ? [null, null]
+          : await Promise.all([
+              enabled(env.USE_SAM)
+                ? locateDogs(
+                    env.MODEL_API_KEY!,
+                    input.media,
+                    setting(env.SAM_MIN_CONFIDENCE, 0.5, 0, 1),
+                  ).catch(() => null)
+                : null,
+              asr(),
+            ]);
+        let human_speech = preSpeech;
         const prompt = readingPrompt(
           input.lang,
           input.context,
@@ -187,6 +183,7 @@ export default {
           ));
         if (!matchesSchema(result, descriptorSchema))
           throw new Error("Invalid model response");
+        if (asrLive) human_speech = await asrLive;
         return json({
           ...interpret(result as Descriptors, input, { sam, human_speech }),
           analysis_mode: input.deep ? "deep" : "single",

@@ -197,8 +197,8 @@ describe("Voice Transcribe filtering and multipart", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
-describe("parallel enrichment and live-only Spark gate", () => {
-  it("runs SAM and ASR in parallel, then sends both as untrusted Spark hints", async () => {
+describe("parallel enrichment (uploads) and fast live path", () => {
+  it("runs SAM and ASR in parallel on uploads, then sends both as untrusted Spark hints", async () => {
     let release!: () => void;
     const barrier = new Promise<void>((resolve) => {
       release = resolve;
@@ -225,7 +225,7 @@ describe("parallel enrichment and live-only Spark gate", () => {
       });
     });
     vi.stubGlobal("fetch", fetch);
-    const response = await worker.fetch(request(await input()), env);
+    const response = await worker.fetch(request(await input("upload")), env);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       sam: { dogs: 1, frames_checked: 2 },
@@ -234,30 +234,35 @@ describe("parallel enrichment and live-only Spark gate", () => {
     });
     expect(models.at(-1)).toBe("muse-spark-1.3");
   });
-  it("skips Spark on a verified live negative with no dog sound, but does not skip uploads", async () => {
-    const fetch = vi.fn().mockImplementation(async (url, options) =>
-      String(url).endsWith("/asr/transcribe")
-        ? Response.json({ turns: [] })
-        : JSON.parse(options.body).model === "sam-3.1"
-          ? samResponse("")
-          : Response.json({
-              output_text: JSON.stringify(emptyDescriptors("Not observed")),
-            }),
-    );
-    vi.stubGlobal("fetch", fetch);
-    const result = await worker.fetch(request(await input()), env);
-    expect(await result.json()).toMatchObject({
-      skipped: true,
-      reason: "sam_no_dog",
-      sam: { dogs: 0, frames_checked: 2 },
+  it("live never calls SAM or skips Spark; ASR runs alongside Spark; uploads keep SAM", async () => {
+    const models: string[] = [];
+    const fetch = vi.fn().mockImplementation(async (url, options) => {
+      if (String(url).endsWith("/asr/transcribe")) {
+        models.push("asr");
+        return Response.json({ turns: [] });
+      }
+      const model = JSON.parse(options.body).model;
+      models.push(model);
+      return model === "sam-3.1"
+        ? samResponse("")
+        : Response.json({
+            output_text: JSON.stringify(emptyDescriptors("Not observed")),
+          });
     });
-    expect(fetch).toHaveBeenCalledTimes(3);
+    vi.stubGlobal("fetch", fetch);
+    const live = await (await worker.fetch(request(await input()), env)).json();
+    expect(live).toMatchObject({ mode: "live", sam: null });
+    expect(live.skipped).toBeUndefined();
+    expect(models).not.toContain("sam-3.1");
+    expect(models).toContain("asr");
+    expect(models).toContain("muse-spark-1.3");
+    expect(fetch).toHaveBeenCalledTimes(2);
     const upload = await worker.fetch(request(await input("upload")), env);
     expect(await upload.json()).toMatchObject({
       mode: "live",
       sam: { dogs: 0 },
     });
-    expect(fetch).toHaveBeenCalledTimes(7);
+    expect(models).toContain("sam-3.1");
   });
   it("fails open independently on SAM and ASR errors", async () => {
     const fetch = vi.fn().mockImplementation(async (url, options) =>

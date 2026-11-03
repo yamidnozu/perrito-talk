@@ -112,7 +112,7 @@ for (const name of (await readdir(dir))
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         lang: "es",
-        source: "upload",
+        source: process.env.SOURCE || "upload",
         context_mode: process.env.CONTEXT_MODE || "at_home",
         media,
         acoustic_hints: analyzeAcoustics(pcm),
