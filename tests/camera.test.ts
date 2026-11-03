@@ -45,119 +45,52 @@ describe("camera heuristics and validation", () => {
       vocalization: { present: type !== "none", type, description: type },
     },
   });
-  it("detects the reported five-clip vocalization pattern", () => {
-    const clips = ["whine", "whine", "howl", "bark", "none"].map((v, i) =>
-      voiced(i, v),
-    );
-    const v = validateCamera({ lang: "en", clips });
-    expect(v.clips[0].signals.vocalization).toEqual(
-      clips[0].signals.vocalization,
-    );
-    expect(cameraHeuristics(v)).toEqual([
-      expect.objectContaining({
-        type: "separation_anxiety",
-        severity: "warning",
-      }),
-    ]);
-  });
-  it("makes four consecutive vocalizations urgent and counts mixed barking/howling", () => {
+  it("never infers separation or prolonged barking from legacy labels or sparse voices", () => {
     const v = validateCamera({
       lang: "en",
-      clips: ["whine", "howl", "howl", "howl"].map((v, i) => voiced(i * 10, v)),
-    });
-    expect(cameraHeuristics(v)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: "separation_anxiety",
-          severity: "urgent",
-        }),
-        expect.objectContaining({
-          type: "prolonged_barking",
-          evidence: expect.stringContaining("Barking/howling"),
-        }),
-      ]),
-    );
-  });
-  it("uses acoustic hints and retains them through validation", () => {
-    const hints = {
-      class: "whine_whimper",
-      confidence: 0.8,
-      metrics: {
-        active: 1,
-        tonal: 1,
-        longest_tonal_s: 2,
-        pitch_hz: 400,
-        bursts: 2,
-      },
-    };
-    const v = validateCamera({
-      lang: "en",
-      clips: [0, 1].map((i) => ({
-        ...voiced(i, "none"),
-        acoustic_hints: hints,
-      })),
-    });
-    expect(v.clips[0].acoustic_hints).toEqual(hints);
-    expect(cameraHeuristics(v)[0].type).toBe("separation_anxiety");
-    expect(
-      cameraHeuristics(
-        validateCamera({
-          lang: "en",
-          clips: [0, 15, 30].map((i) => ({
-            ...voiced(i, "none"),
-            acoustic_hints: { ...hints, class: "bark" },
-          })),
-        }),
-      )[0].type,
-    ).toBe("prolonged_barking");
-  });
-  it("uses wants_out labels and reports cry and pain", () => {
-    expect(
-      cameraHeuristics(
-        validateCamera({
-          lang: "en",
-          clips: [clip(0, "wants_out", false), clip(1, "fear", false)],
-        }),
-      )[0].type,
-    ).toBe("separation_anxiety");
-    expect(
-      cameraHeuristics(
-        validateCamera({
-          lang: "en",
-          clips: [voiced(0, "cry"), clip(1, "pain", false)],
-        }),
-      ).map((a) => a.type),
-    ).toEqual(["distress_vocalization", "pain_signs"]);
-  });
-  it("sorts readings and detects consecutive anxiety and repeated barks", () => {
-    const v = input();
-    expect(v.clips[0].ts).toBe(clip(0).ts);
-    expect(cameraHeuristics(v).map((a) => a.type)).toEqual([
-      "separation_anxiety",
-      "prolonged_barking",
-    ]);
-  });
-  it("does not infer patterns across nonconsecutive anxiety or a >30min bark window", () => {
-    const v = validateCamera({
-      lang: "es",
-      clips: [clip(0), clip(16, "happy"), clip(31)],
+      clips: ["whine", "howl", "bark"].map((v, i) => voiced(i, v)),
     });
     expect(cameraHeuristics(v)).toEqual([]);
   });
-  it("includes exactly 30 minutes and preserves urgent veterinary evidence", () => {
+  it("gates a sourced separation pattern on declared absence", () => {
+    const sourced = {
+      ...clip(),
+      interpretations: [
+        {
+          state: "compatible_with_separation_related_problem",
+          certainty: "moderada",
+          citations: ["C35", "C37"],
+          conditional: false,
+        },
+      ],
+    };
+    expect(
+      cameraHeuristics(validateCamera({ lang: "en", clips: [sourced] })),
+    ).toEqual([]);
+    const v = validateCamera({
+      lang: "en",
+      clips: [{ ...sourced, context_mode: "i_left" }],
+    });
+    expect(cameraHeuristics(v)[0]).toMatchObject({
+      type: "separation_anxiety",
+      severity: "warning",
+    });
+  });
+  it("preserves chronological order and urgent vet alerts without relying on emotion labels", () => {
     const v = input();
-    v.clips[2].ts = clip(30).ts;
+    expect(v.clips[0].ts).toBe(clip(0).ts);
     v.clips[0].vet_alert = {
       flag: true,
       urgency: "emergency",
       reasons: ["Collapse"],
     };
-    expect(cameraHeuristics(v)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: "prolonged_barking" }),
-        expect.objectContaining({ type: "pain_signs", severity: "urgent" }),
-      ]),
-    );
+    expect(cameraHeuristics(v)).toEqual([
+      expect.objectContaining({
+        type: "pain_signs",
+        severity: "urgent",
+        advice: expect.stringContaining("not a diagnosis"),
+      }),
+    ]);
   });
   it.each([
     [],
@@ -255,7 +188,7 @@ describe("camera routes", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as any;
     expect(body.mode).toBe("live");
-    expect(body.alerts).toHaveLength(2);
+    expect(body.alerts).toHaveLength(0);
     const sent = JSON.parse(fetch.mock.calls[0][1].body);
     expect(sent.text.format.strict).toBe(true);
     expect(sent.text.format.schema).toEqual(cameraSummarySchema);

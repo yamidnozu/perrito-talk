@@ -145,8 +145,14 @@
               disabled
               data-i18n="analyze"
             >
-              Translate this moment ✦</button
-            ><button id="sample" class="sample" data-i18n="sample">
+              Read this moment ✦</button
+            ><button id="deepAnalyze" disabled data-i18n="deepAnalyze">
+              Deep analysis
+            </button>
+            <small id="deepCost" data-i18n="deepCost"
+              >About three times the model calls; retries may add calls.</small
+            >
+            <button id="sample" class="sample" data-i18n="sample">
               Just curious? Try a sample →
             </button>
           </section>
@@ -165,7 +171,7 @@
               ><span data-i18n="voice">♫ Voice & sounds</span
               ><span data-i18n="care">♡ Better care</span>
             </div>
-            <div class="note" data-i18n="disclaimer">
+            <div class="note" data-i18n="disclaimer" id="welcomeDisclaimer">
               Interpretation, not a diagnosis. Your dog is wonderfully complex;
               context and a veterinarian still matter.
             </div>
@@ -222,9 +228,7 @@
     <footer class="wrap">
       <span
         >PerritoTalk <span class="heart">♡</span> Meta Model API Hackathon</span
-      ><span data-i18n="footer"
-        >Made for the love of dogs. Interpretation, not a diagnosis.</span
-      >
+      ><span data-i18n="footer">Made for the love of dogs.</span>
     </footer>
     <dialog id="cardDialog">
       <button id="closeCard" class="close" aria-label="Close">×</button>

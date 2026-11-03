@@ -1,0 +1,708 @@
+{
+  "version": "2026-11-03",
+  "certainty_scale": {
+    "alta": "replicated or clinical consensus",
+    "moderada": "peer-reviewed, limited sample/context",
+    "baja": "weak/nonspecific association or single study",
+    "especulativa": "not measurable by app or not replicated"
+  },
+  "weight_note": "weights are ordinal mappings of certainty (alta .8, moderada .55, baja .3, especulativa .1), NOT calibrated probabilities",
+  "citations": {
+    "C01": "Pongrácz et al. 2005 J Comp Psychol 119(2):136-44 doi:10.1037/0735-7036.119.2.136",
+    "C02": "Pongrácz, Molnár, Miklósi 2006 Appl Anim Behav Sci 100:228-240 doi:10.1016/j.applanim.2005.12.004",
+    "C03": "Molnár et al. 2006 Behav Processes 73(1):76-83 doi:10.1016/j.beproc.2006.03.014",
+    "C04": "Molnár et al. 2008 Anim Cogn 11(3):389-400 doi:10.1007/s10071-007-0129-9",
+    "C05": "Yin 2002 J Comp Psychol 116(2):189-93 doi:10.1037/0735-7036.116.2.189",
+    "C06": "Yin & McCowan 2004 Anim Behav 68(2):343-355 doi:10.1016/j.anbehav.2003.07.016",
+    "C07": "Larrañaga et al. 2015 Anim Cogn 18(2):405-21 doi:10.1007/s10071-014-0811-7",
+    "C08": "Faragó et al. 2017 R Soc Open Sci 4:170134 doi:10.1098/rsos.170134",
+    "C09": "Bálint et al. 2016 Anim Cogn 19(6):1115-31 doi:10.1007/s10071-016-1019-9",
+    "C10": "Faragó et al. 2010 PLoS One 5(12):e15175 doi:10.1371/journal.pone.0015175",
+    "C11": "Quaranta, Siniscalchi, Vallortigara 2007 Curr Biol 17(6):R199-201 doi:10.1016/j.cub.2007.02.008",
+    "C12": "Siniscalchi et al. 2013 Curr Biol 23(22):2279-82 doi:10.1016/j.cub.2013.09.027",
+    "C13": "Siniscalchi et al. 2018 Animals 8(8):131 doi:10.3390/ani8080131",
+    "C14": "Bekoff 1977 Science 197:1097-9 doi:10.1126/science.197.4308.1097",
+    "C15": "Byosiere, Espinosa, Smuts 2016 Behav Processes 125:106-13 doi:10.1016/j.beproc.2016.02.007",
+    "C16": "Byosiere et al. 2016 PLoS One 11(12):e0168570 doi:10.1371/journal.pone.0168570",
+    "C17": "Horowitz 2009 Anim Cogn 12(1):107-18 doi:10.1007/s10071-008-0175-y",
+    "C18": "Beerda et al. 1998 Appl Anim Behav Sci doi:10.1016/S0168-1591(97)00145-7",
+    "C19": "Beerda et al. 1999 Physiol Behav 66(2):233-42 doi:10.1016/s0031-9384(98)00289-3",
+    "C20": "Firnkes et al. 2017 J Vet Behav 19:35-44 doi:10.1016/j.jveb.2016.12.012",
+    "C21": "Kuhne, Hössler, Struwe 2012 Berl Munch Tierarztl Wochenschr 125:371-8 PMID 23045798",
+    "C22": "Gilbert-Gregory et al. 2016 JAVMA 249(11):1281-91 doi:10.2460/javma.249.11.1281",
+    "C23": "Bremhorst et al. 2019 Sci Rep 9:19312 doi:10.1038/s41598-019-55714-6",
+    "C24": "Bremhorst et al. 2022 Anim Cogn 25:121-36 doi:10.1007/s10071-021-01532-1",
+    "C25": "Caeiro, Guo, Mills 2017 Sci Rep 7:15525 doi:10.1038/s41598-017-15091-4",
+    "C26": "Waller et al. 2013 PLoS One 8:e82686 doi:10.1371/journal.pone.0082686",
+    "C27": "Bloom & Friedman 2013 Behav Processes 96:1-10 doi:10.1016/j.beproc.2013.02.010",
+    "C28": "Kujala et al. 2017 PLoS One 12:e0170730 doi:10.1371/journal.pone.0170730",
+    "C29": "Boneh-Shitrit et al. 2022 Sci Rep 12:22611 doi:10.1038/s41598-022-27079-w",
+    "C30": "Holton et al. 2001 Vet Rec 148:525-31 doi:10.1136/vr.148.17.525",
+    "C31": "Reid et al. 2007 CMPS-SF; guidance https://wsava.org/wp-content/uploads/2020/01/Canine-CMPS-SF.pdf (journal details not verified)",
+    "C32": "Testa et al. 2021 Front Vet Sci 8:751949 doi:10.3389/fvets.2021.751949",
+    "C33": "Brown, Bell, Rhodes 2013 Am J Vet Res 74(12):1467-73 doi:10.2460/ajvr.74.12.1467",
+    "C34": "AAHA 2022 Pain Management Guidelines (acute canine assessment page + Signs of Pain PDF) https://www.aaha.org/resources/2022-aaha-pain-management-guidelines-for-dogs-and-cats/acute-and-perioperative-canine-pain-assessment/",
+    "C35": "Sherman & Mills 2008 Vet Clin North Am Small Anim Pract 38(5):1081-106 doi:10.1016/j.cvsm.2008.04.012",
+    "C36": "Lund & Jørgensen 1999 Appl Anim Behav Sci 63(3):219-236 doi:10.1016/S0168-1591(99)00011-8 (abstract NOT opened; via C45)",
+    "C37": "de Assis et al. 2020 Front Vet Sci 6:499 doi:10.3389/fvets.2019.00499",
+    "C38": "Lenkei et al. 2021 Sci Rep 11:19207 doi:10.1038/s41598-021-98526-3",
+    "C39": "Marx et al. 2021 Sci Rep 11:4468 doi:10.1038/s41598-021-83614-1",
+    "C40": "Abzaliev, Pérez Espinosa, Mihalcea 2024 LREC-COLING arXiv:2404.18739",
+    "C41": "YAMNet README + class map https://github.com/tensorflow/models/tree/master/research/audioset/yamnet",
+    "C42": "AudioSet ontology / class quality pages https://research.google.com/audioset/dataset/",
+    "C43": "MediaPipe Audio Classifier (YAMNet) & Object Detector (EfficientDet-Lite0, COCO 80 labels) https://ai.google.dev/edge/mediapipe/solutions/",
+    "C44": "Mota-Rojas et al. 2021 Animals 11:3334 doi:10.3390/ani11113334",
+    "C45": "(authors not verified) 2011 Appl Anim Behav Sci, separation & reunion questionnaire+experiment https://www.sciencedirect.com/science/article/abs/pii/S0168159111003169"
+  },
+  "signals": [
+    {
+      "id": "bark_low_harsh_rapid",
+      "modality": "acoustic",
+      "detectable_by": ["local_yamnet:Bark", "local_dsp"],
+      "observable_features": {
+        "pitch": "low relative to this dog's baseline",
+        "tonality_hnr": "low (harsh/noisy)",
+        "inter_bark_interval": "short, rapid repetition",
+        "duration": "longer barks",
+        "modulation": "low"
+      },
+      "supports": [
+        {
+          "state": "alert_disturbance",
+          "certainty": "moderada",
+          "weight": 0.55
+        },
+        {
+          "state": "perceived_aggression_by_humans",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": ["external stimulus (doorbell, stranger) helps"],
+      "citations": ["C06", "C02", "C01"],
+      "caveat": "Pitch is relative per dog/breed; no transferable Hz threshold. Perception studies measure human ratings, not dog state."
+    },
+    {
+      "id": "bark_high_tonal_modulated",
+      "modality": "acoustic",
+      "detectable_by": ["local_yamnet:Bark", "local_dsp"],
+      "observable_features": {
+        "pitch": "high relative to baseline",
+        "tonality_hnr": "higher",
+        "modulation": "frequency-modulated"
+      },
+      "supports": [
+        {
+          "state": "isolation",
+          "certainty": "moderada",
+          "weight": 0.55
+        },
+        {
+          "state": "play",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": [
+        "owner absent vs play partner present disambiguates"
+      ],
+      "citations": ["C06"],
+      "caveat": "Acoustics alone does not separate isolation from play."
+    },
+    {
+      "id": "bark_single_long_intervals",
+      "modality": "acoustic",
+      "detectable_by": ["local_yamnet:Bark", "local_dsp"],
+      "observable_features": {
+        "inter_bark_interval": "long, barks occur singly"
+      },
+      "supports": [
+        {
+          "state": "isolation",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": ["dog separated/alone"],
+      "citations": ["C06"],
+      "caveat": "n=10 dogs."
+    },
+    {
+      "id": "bark_high_long_intervals",
+      "modality": "acoustic",
+      "detectable_by": ["local_dsp"],
+      "observable_features": {
+        "pitch": "high",
+        "inter_bark_interval": "long"
+      },
+      "supports": [
+        {
+          "state": "perceived_playful_happy_by_humans",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": [],
+      "citations": ["C02"],
+      "caveat": "Human perception of synthetic Mudi bark sequences."
+    },
+    {
+      "id": "bark_high_tonal",
+      "modality": "acoustic",
+      "detectable_by": ["local_dsp"],
+      "observable_features": {
+        "pitch": "high",
+        "tonality_hnr": "high"
+      },
+      "supports": [
+        {
+          "state": "perceived_fear_desperation_by_humans",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": [],
+      "citations": ["C02"],
+      "caveat": "Human perception; pitch weighed more than tonality."
+    },
+    {
+      "id": "growl_bout",
+      "modality": "acoustic",
+      "detectable_by": ["local_yamnet:Growling"],
+      "observable_features": {
+        "duration": "bout of several growls",
+        "pulse_rate": "slower pulsing & shorter growls → playful percept",
+        "formants": "larger apparent size → more threatening percept"
+      },
+      "supports": [
+        {
+          "state": "threat_or_guarding",
+          "certainty": "baja",
+          "weight": 0.3
+        },
+        {
+          "state": "play",
+          "certainty": "baja",
+          "weight": 0.3
+        }
+      ],
+      "required_context": [
+        "need bout + visual/interaction context; single growl ambiguous"
+      ],
+      "citations": ["C08", "C09", "C10"],
+      "caveat": "Growl ≠ always aggression; single growls not discriminable play vs threat."
+    },
+    {
+      "id": "whine_nonlinear_harsh",
+      "modality": "acoustic",
+      "detectable_by": ["local_yamnet:Whimper (dog)", "local_dsp"],
+      "observable_features": {
+        "tonality_hnr": "lower, with non-linear phenomena (subharmonics, chaos, bifurcations)"
+      },
+      "supports": [
+        {
+          "state": "separation_related_stress",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": [
+        "dog alone/separated",
+        "older dogs show more NLP (confound)"
+      ],
+      "citations": ["C39"],
+      "caveat": "Age confound; YAMNet 'Whimper (dog)' label quality only 50%."
+    },
+    {
+      "id": "whine_without_bark_when_alone",
+      "modality": "acoustic",
+      "detectable_by": ["local_yamnet:Whimper (dog)"],
+      "observable_features": {
+        "pattern": "whining, little/no barking during separation"
+      },
+      "supports": [
+        {
+          "state": "separation_fear_component",
+          "certainty": "baja",
+          "weight": 0.3
+        }
+      ],
+      "required_context": ["owner absent"],
+      "citations": ["C38"],
+      "caveat": "Population-level association."
+    },
+    {
+      "id": "bark_plus_door_scratch_when_alone",
+      "modality": "multimodal",
+      "detectable_by": ["local_yamnet:Bark", "muse_vision"],
+      "observable_features": {
+        "pattern": "barking + scratching at the exit door"
+      },
+      "supports": [
+        {
+          "state": "separation_frustration_component",
+          "certainty": "baja",
+          "weight": 0.3
+        }
+      ],
+      "required_context": ["owner absent"],
+      "citations": ["C38", "C37"],
+      "caveat": "Population-level association."
+    },
+    {
+      "id": "vocalize_on_touch",
+      "modality": "multimodal",
+      "detectable_by": ["muse_vision", "local_yamnet"],
+      "observable_features": {
+        "pattern": "yelp/whimper when touched or moving"
+      },
+      "supports": [
+        {
+          "state": "possible_pain",
+          "certainty": "alta",
+          "weight": 0.8
+        }
+      ],
+      "required_context": ["touch/movement; deviation from normal"],
+      "citations": ["C34", "C30"],
+      "caveat": "Flag for vet only; absence does not rule out pain."
+    },
+    {
+      "id": "howl",
+      "modality": "acoustic",
+      "detectable_by": ["local_yamnet:Howl"],
+      "observable_features": {},
+      "supports": [
+        {
+          "state": "unspecified",
+          "certainty": "especulativa",
+          "weight": 0.1
+        }
+      ],
+      "required_context": [],
+      "citations": ["C42"],
+      "caveat": "No opened study maps howling to a specific emotion; report only 'howled'."
+    },
+    {
+      "id": "play_bow",
+      "modality": "visual",
+      "detectable_by": ["muse_vision"],
+      "observable_features": {
+        "posture": "forelimbs lowered, rear raised",
+        "timing": "often after a pause in play"
+      },
+      "supports": [
+        {
+          "state": "play_intent",
+          "certainty": "alta",
+          "weight": 0.8
+        }
+      ],
+      "required_context": ["social partner present"],
+      "citations": ["C14", "C15", "C16", "C17"],
+      "caveat": "In adults mainly re-initiates play after a pause."
+    },
+    {
+      "id": "tail_wag_asymmetry",
+      "modality": "visual",
+      "detectable_by": ["not_feasible_phone"],
+      "observable_features": {
+        "tail": "wag amplitude bias right vs left of pelvis midline (top/rear view)"
+      },
+      "supports": [
+        {
+          "state": "approach_positive",
+          "certainty": "especulativa",
+          "weight": 0.1
+        },
+        {
+          "state": "withdrawal_negative",
+          "certainty": "especulativa",
+          "weight": 0.1
+        }
+      ],
+      "required_context": ["calibrated top/rear camera"],
+      "citations": ["C11", "C12", "C13"],
+      "caveat": "Lab-grade measurement; not feasible from frontal phone video."
+    },
+    {
+      "id": "tail_wag_any",
+      "modality": "visual",
+      "detectable_by": ["muse_vision", "local_motion(weak)"],
+      "observable_features": {
+        "tail": "wagging"
+      },
+      "supports": [
+        {
+          "state": "arousal_not_valence",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": [],
+      "citations": ["C19", "C11"],
+      "caveat": "Tail wag ≠ happiness; chronically stressed dogs wagged more when challenged."
+    },
+    {
+      "id": "very_low_posture_after_sudden_stimulus",
+      "modality": "visual",
+      "detectable_by": ["muse_vision"],
+      "observable_features": {
+        "posture": "very low",
+        "trigger": "sudden unpredictable stimulus"
+      },
+      "supports": [
+        {
+          "state": "intense_acute_stress",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": ["sudden event (noise, falling object)"],
+      "citations": ["C18"],
+      "caveat": "n=10; behaviour did not correlate significantly with physiology."
+    },
+    {
+      "id": "restless_shake_oral_yawn",
+      "modality": "visual",
+      "detectable_by": ["muse_vision", "local_motion(restlessness only)"],
+      "observable_features": {
+        "movement": "restlessness",
+        "body": "shake-off",
+        "mouth": "lip/nose licking, yawning, open mouth (less often)",
+        "posture": "moderately lowered"
+      },
+      "supports": [
+        {
+          "state": "moderate_acute_stress",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": ["social or handling context"],
+      "citations": ["C18", "C22"],
+      "caveat": "Each sign alone is nonspecific."
+    },
+    {
+      "id": "lip_lick_look_away",
+      "modality": "visual",
+      "detectable_by": ["muse_vision"],
+      "observable_features": {
+        "mouth": "lip licking",
+        "gaze": "looking away"
+      },
+      "supports": [
+        {
+          "state": "appeasement_mild_conflict",
+          "certainty": "moderada",
+          "weight": 0.55
+        },
+        {
+          "state": "greeting",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": ["human interacting; decreases under major threat"],
+      "citations": ["C20", "C21"],
+      "caveat": "Also part of friendly greeting."
+    },
+    {
+      "id": "whale_eye_ears_back_gaze_avert",
+      "modality": "visual",
+      "detectable_by": ["muse_vision"],
+      "observable_features": {
+        "eyes": "sclera visible",
+        "ears": "pinned back",
+        "gaze": "averted"
+      },
+      "supports": [
+        {
+          "state": "freeze_stress",
+          "certainty": "baja",
+          "weight": 0.3
+        }
+      ],
+      "required_context": ["stressful setting"],
+      "citations": ["C22"],
+      "caveat": "Clinical ethogram item only."
+    },
+    {
+      "id": "ears_adductor",
+      "modality": "visual",
+      "detectable_by": ["muse_vision"],
+      "observable_features": {
+        "ears": "ears adductor (DogFACS EAD102)"
+      },
+      "supports": [
+        {
+          "state": "positive_anticipation",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": ["awaiting reward"],
+      "citations": ["C23", "C24"],
+      "caveat": "High specificity, low sensitivity."
+    },
+    {
+      "id": "ears_flattener_blink_nose_lick",
+      "modality": "visual",
+      "detectable_by": ["muse_vision"],
+      "observable_features": {
+        "ears": "flattener/downward",
+        "eyes": "blink",
+        "mouth": "lips part, jaw drop, nose lick"
+      },
+      "supports": [
+        {
+          "state": "frustration",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": ["reward visible but withheld"],
+      "citations": ["C23", "C24", "C29"],
+      "caveat": "Ears flattener low specificity; no single action is diagnostic."
+    },
+    {
+      "id": "pain_behaviour_signs",
+      "modality": "visual",
+      "detectable_by": ["muse_vision"],
+      "observable_features": {
+        "movement": "limping, reluctance to move/jump, stiffness, reduced activity/play",
+        "posture": "hunched, head lowered",
+        "body": "licking/chewing an area",
+        "face": "ears drawn back, furrowed brow, squinted eyes, lips drawn back"
+      },
+      "supports": [
+        {
+          "state": "possible_pain_consult_vet",
+          "certainty": "alta",
+          "weight": 0.8
+        }
+      ],
+      "required_context": ["deviation from this dog's normal; persistence"],
+      "citations": ["C34", "C30", "C31", "C44"],
+      "caveat": "Not diagnosable by app; CMPS-SF needs handling by a clinician."
+    },
+    {
+      "id": "chronic_stress_signs",
+      "modality": "visual",
+      "detectable_by": ["not_feasible_single_clip"],
+      "observable_features": {
+        "posture": "low",
+        "behaviour": "autogrooming, paw lifting, vocalizing, repetitive behaviour"
+      },
+      "supports": [
+        {
+          "state": "chronic_stress",
+          "certainty": "moderada",
+          "weight": 0.55
+        }
+      ],
+      "required_context": ["weeks of observation"],
+      "citations": ["C19"],
+      "caveat": "Cannot be inferred from a short clip."
+    },
+    {
+      "id": "dog_present",
+      "modality": "visual",
+      "detectable_by": ["local_mediapipe:EfficientDet-Lite0 COCO 'dog'"],
+      "observable_features": {},
+      "supports": [
+        {
+          "state": "observation_only",
+          "certainty": "alta",
+          "weight": 0.8
+        }
+      ],
+      "required_context": [],
+      "citations": ["C43"],
+      "caveat": "Detection only; per-class accuracy for 'dog' not verified."
+    }
+  ],
+  "combinations": [
+    {
+      "id": "separation_related_pattern",
+      "requires_context": ["owner_absent (user-declared)"],
+      "any_of": [
+        "sustained vocalization (bark/whine/howl)",
+        "destruction near exits",
+        "inappropriate elimination",
+        "restlessness/pacing",
+        "hypersalivation"
+      ],
+      "min_signs": 2,
+      "output_state": "compatible_with_separation_related_problem",
+      "certainty": "moderada",
+      "citations": ["C35", "C37", "C45"],
+      "subtypes": {
+        "whine_without_bark": ["separation_fear_component", "C38"],
+        "bark_plus_door_scratch": ["separation_frustration_component", "C38"],
+        "nonlinear_whines": ["separation_related_stress", "C39"]
+      },
+      "caveat": "Heterogeneous syndrome; app can say 'compatible', never diagnose. Activity may decrease over hours (C36, via C45), so late stillness ≠ calm."
+    },
+    {
+      "id": "play",
+      "any_of": [
+        "play_bow",
+        "high_long_interval_barks",
+        "short_slow_pulsed_growl_bouts"
+      ],
+      "requires_context": ["partner present", "interaction"],
+      "output_state": "play",
+      "certainty": "moderada",
+      "citations": ["C14", "C15", "C02", "C08"],
+      "caveat": "Play bow alone is the strongest cue (alta)."
+    },
+    {
+      "id": "alert_disturbance",
+      "all_of": ["bark_low_harsh_rapid"],
+      "requires_context": ["external stimulus"],
+      "output_state": "alert_disturbance",
+      "certainty": "moderada",
+      "citations": ["C06", "C02"]
+    },
+    {
+      "id": "moderate_acute_stress",
+      "min_signs": 2,
+      "any_of": [
+        "lip_lick",
+        "yawn",
+        "body_shake",
+        "moderately_lowered_posture",
+        "restlessness",
+        "panting_without_heat_or_exercise",
+        "trembling"
+      ],
+      "requires_context": ["social/handling or stressful setting"],
+      "output_state": "moderate_acute_stress",
+      "certainty": "moderada",
+      "citations": ["C18", "C20", "C22"],
+      "caveat": "Single sign insufficient; lip licking also occurs in greeting."
+    },
+    {
+      "id": "frustration_vs_anticipation",
+      "requires_context": ["reward visible"],
+      "rules": {
+        "frustration": [
+          "ears_flattener",
+          "blink",
+          "nose_lick",
+          "lips_part",
+          "jaw_drop"
+        ],
+        "anticipation": ["ears_adductor"]
+      },
+      "certainty": "moderada",
+      "citations": ["C23", "C24", "C29"],
+      "caveat": "No single action consistently correct across contexts."
+    },
+    {
+      "id": "pain_flag",
+      "any_of": ["pain_behaviour_signs", "vocalize_on_touch"],
+      "output_state": "possible_pain_consult_vet",
+      "certainty": "alta",
+      "citations": ["C34"],
+      "caveat": "Always route to vet; never reassure 'no pain'."
+    }
+  ],
+  "yamnet_dog_classes": [
+    {
+      "idx": 69,
+      "name": "Dog",
+      "label_quality": "10/10"
+    },
+    {
+      "idx": 70,
+      "name": "Bark",
+      "label_quality": "9/9"
+    },
+    {
+      "idx": 71,
+      "name": "Yip",
+      "label_quality": "3/10 LOW"
+    },
+    {
+      "idx": 72,
+      "name": "Howl",
+      "label_quality": "8/10"
+    },
+    {
+      "idx": 73,
+      "name": "Bow-wow",
+      "label_quality": "not verified"
+    },
+    {
+      "idx": 74,
+      "name": "Growling",
+      "label_quality": "9/10 (not dog-specific)"
+    },
+    {
+      "idx": 75,
+      "name": "Whimper (dog)",
+      "label_quality": "5/10 MEDIUM"
+    },
+    {
+      "idx": 21,
+      "name": "Whimper",
+      "label_quality": "8/10 (human; confusable)"
+    },
+    {
+      "idx": 117,
+      "name": "Canidae, dogs, wolves",
+      "label_quality": "8/10"
+    }
+  ],
+  "ml_ceiling": [
+    {
+      "cit": "C04",
+      "task": "bark context 6",
+      "acc": 0.43
+    },
+    {
+      "cit": "C06",
+      "task": "bark context 3",
+      "acc": 0.63,
+      "chance": 0.33
+    },
+    {
+      "cit": "C07",
+      "task": "bark context 7",
+      "acc": 0.555
+    },
+    {
+      "cit": "C40",
+      "task": "bark context 4",
+      "acc": 0.6218,
+      "majority_baseline": 0.5637
+    },
+    {
+      "cit": "C29",
+      "task": "face frustration vs anticipation (lab, 29 Labradors)",
+      "acc": 0.89
+    }
+  ],
+  "forbidden_claims": [
+    "literal translation of barks/gestures into words",
+    "tail wag = happy",
+    "app diagnoses or rules out pain",
+    "app diagnoses separation anxiety",
+    "growl = aggression",
+    "lip licking = stress (always)",
+    "human-like reading of dog face (smile = happy)",
+    "howl = sadness",
+    "uncalibrated % confidence presented as accuracy"
+  ],
+  "not_verified": [
+    "DogFACS manual",
+    "Overall/Beaver/Mills books",
+    "Lund & Jørgensen 1999 abstract",
+    "Reid 2007 journal details",
+    "Hantke et al. 2018 ICASSP",
+    "MediaPipe per-class 'dog' accuracy",
+    "AudioSet Bow-wow quality"
+  ]
+}

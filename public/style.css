@@ -866,3 +866,59 @@ dialog img {
   max-width: 100%;
   min-width: 0;
 }
+
+.watcher-meters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.2rem;
+  padding: 1rem 0;
+}
+.watcher-meters p {
+  margin: 0;
+}
+.watcher-meters strong {
+  width: 100%;
+}
+.watcher-meters label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+#liveZone {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+#liveZone.drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
+  z-index: 2;
+}
+#liveVideo {
+  max-height: none;
+  height: auto;
+}
+#liveTimeline .live-local {
+  color: #68716b;
+  font-size: 0.85rem;
+  margin-block: 0.5rem;
+}
+#liveTimeline .live-ai {
+  border-left: 3px solid #448260;
+  padding-left: 0.8rem;
+}
+.reading-vet {
+  position: sticky;
+  bottom: 0;
+  background: #fff4e6;
+  z-index: 3;
+  padding: 1rem;
+}
+.citation {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+}

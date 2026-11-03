@@ -1,3 +1,7 @@
+import { descriptorSchema, type Descriptors } from "./descriptors";
+import { matchesSchema } from "./schema";
+import { vote } from "./vote";
+export { vote } from "./vote";
 // Meta API adapters; credentials stay in the Worker.
 import { SYSTEM } from "./prompts";
 import type { AnalyzeInput } from "./schema";
@@ -46,11 +50,17 @@ export function mediaParts(media: AnalyzeInput["media"]) {
   );
 }
 
+/** Only explicitly supported summary models; descriptors always use Spark. */
+export function summaryModel(value?: string) {
+  return value === "muse-wonder-1.0" ? value : MODEL;
+}
 export async function structured(
   key: string,
   prompt: string,
   schema: unknown,
   parts: unknown[] = [],
+  model = MODEL,
+  timeoutMs = 90000,
 ) {
   const audioNote = parts.some((p: any) => p.type === "input_video")
     ? "A video with its original embedded audio is attached. Listen to that track before choosing a label; report unavailable audio explicitly."
@@ -64,7 +74,7 @@ export async function structured(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       instructions: SYSTEM,
       input: [
         {
@@ -86,10 +96,44 @@ export async function structured(
       },
       reasoning: { effort: "low" },
     }),
-    signal: AbortSignal.timeout(90000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!r.ok) throw new Error("Model unavailable");
   return parseResponse(await r.json());
+}
+
+/** Three descriptions in parallel, one retry each, followed by one code vote. */
+export async function deepDescriptors(
+  key: string,
+  prompt: string,
+  parts: unknown[],
+  lang: "en" | "es",
+) {
+  let calls = 0;
+  const descriptions = await Promise.all(
+    Array.from({ length: 3 }, async () => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          calls++;
+          const result = await structured(
+            key,
+            prompt,
+            descriptorSchema,
+            parts,
+            MODEL,
+            30000,
+          );
+          if (!matchesSchema(result, descriptorSchema))
+            throw new Error("Invalid model descriptors");
+          return result as Descriptors;
+        } catch (error) {
+          if (attempt === 1) throw error;
+        }
+      }
+      throw new Error("Descriptor attempts exhausted");
+    }),
+  );
+  return { descriptors: vote(descriptions, lang), calls };
 }
 
 export async function imageCard(key: string, prompt: string) {

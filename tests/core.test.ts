@@ -1,10 +1,7 @@
+import { descriptorSchema, emptyDescriptors } from "../src/descriptors";
+import { readingPrompt } from "../src/prompts";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import {
-  calibrateReading,
-  validateAnalyze,
-  matchesSchema,
-  readingSchema,
-} from "../src/schema";
+import { validateAnalyze, matchesSchema, readingSchema } from "../src/schema";
 import { mockReading, mockPatterns } from "../src/mock";
 import { parseResponse, mediaParts } from "../src/meta";
 import worker from "../src/index";
@@ -68,10 +65,11 @@ describe("validation", () => {
 describe("deterministic mocks", () => {
   it("detects door context and preserves schema", () => {
     const r = mockReading(input());
-    expect(r.primary.label).toBe("wants_out");
+    expect(r.primary.label).toBe("other");
+    expect(r.certainty).toBe("especulativa");
     const { mode, ...reading } = r;
     expect(mode).toBe("mock");
-    expect(matchesSchema(reading, readingSchema)).toBe(true);
+    expect(matchesSchema(reading.observations, descriptorSchema)).toBe(true);
     expect(mockReading(input())).toEqual(r);
     expect(r.signals.bark.present).toBe(false);
   });
@@ -83,7 +81,7 @@ describe("deterministic mocks", () => {
     });
     expect(r.primary.label).toBe("pain");
     expect(r.vet_alert).toMatchObject({ flag: true, urgency: "soon" });
-    expect(r.dog_says).toContain("molesta");
+    expect(r.dog_says).toContain("veterinario");
   });
   it("varies by media and play context", () => {
     expect(
@@ -92,7 +90,7 @@ describe("deterministic mocks", () => {
         context: {},
         media: [{ kind: "audio", mime: "audio/wav", data_b64: "AAAA" }],
       }).primary.label,
-    ).toBe("attention");
+    ).toBe("other");
     expect(
       mockReading({ ...input(), context: { situation: "pelota" } }).primary
         .label,
@@ -137,14 +135,15 @@ describe("Meta response parsing", () => {
     "rejects unusable response",
     (data) => expect(() => parseResponse(data)).toThrow(),
   );
-  it("rejects structurally invalid model JSON", () => {
-    expect(matchesSchema({}, readingSchema)).toBe(false);
-    const { mode, ...reading } = mockReading(input());
-    expect(matchesSchema({ ...reading, extra: 1 }, readingSchema)).toBe(false);
+  it("rejects structurally invalid descriptor JSON", () => {
+    const d = emptyDescriptors("Not observed");
+    expect(matchesSchema(d, descriptorSchema)).toBe(true);
+    expect(matchesSchema({}, descriptorSchema)).toBe(false);
+    expect(matchesSchema({ ...d, extra: 1 }, descriptorSchema)).toBe(false);
     expect(
       matchesSchema(
-        { ...reading, primary: { ...reading.primary, confidence: 2 } },
-        readingSchema,
+        { ...d, vocalization: { ...d.vocalization, type: "happy" } },
+        descriptorSchema,
       ),
     ).toBe(false);
   });
@@ -263,61 +262,16 @@ describe("live card contract without network", () => {
   );
 });
 
-describe("reading calibration", () => {
-  it.each(["whine", "cry", "howl"])(
-    "downgrades conflicting %s and preserves original and vet alert",
-    (type) => {
-      const reading = mockReading(input());
-      reading.primary.label = "happy";
-      reading.signals.vocalization = {
-        type,
-        present: true,
-        description: "0–8s",
-      };
-      const checked = calibrateReading(reading, "en");
-      expect(checked.primary).toMatchObject({
-        label: "other",
-        confidence: 0.39,
-      });
-      expect(checked.low_confidence).toBe(true);
-      expect(checked.consistency_warnings).toHaveLength(1);
-      expect(checked.dog_says).toContain("I'm not sure");
-      expect(checked.vet_alert).toEqual(reading.vet_alert);
-      expect(reading.primary.confidence).toBe(0.68);
-    },
-  );
-  it("forces a hedged Spanish phrase below threshold, but leaves 0.4 unchanged", () => {
-    const reading = mockReading(input());
-    reading.primary.confidence = 0.1;
-    expect(calibrateReading(reading, "es")).toMatchObject({
-      low_confidence: true,
-      primary: { label: "other" },
-      dog_says: expect.stringContaining("No estoy seguro"),
-    });
-    reading.primary.confidence = 0.4;
-    expect(calibrateReading(reading, "en")).toEqual(reading);
-  });
-  it("rejects missing or excessive evidence", () => {
-    const { mode, ...reading } = mockReading(input());
-    for (const evidence of [[], ["a", "b", "c", "d", "e"]])
-      expect(
-        matchesSchema(
-          { ...reading, primary: { ...reading.primary, evidence } },
-          readingSchema,
-        ),
-      ).toBe(false);
-  });
-});
-
 describe("live reading safeguards without network", () => {
   afterEach(() => vi.unstubAllGlobals());
-  it("sends embedded video plus separate WAV intact and calibrates before returning", async () => {
-    const { mode, ...reading } = mockReading(input());
-    reading.primary.label = "tired";
-    reading.signals.vocalization = {
+  it("sends one video with embedded audio to Spark low, retaining auxiliary WAV for preflight", async () => {
+    const reading = emptyDescriptors("Not observed");
+    reading.vocalization = {
+      ...reading.vocalization,
+      seen: "yes",
       type: "howl",
-      present: true,
-      description: "Howling 0–8s",
+      count: 1,
+      evidence: "Howling 0–8s",
     };
     const upstream = vi
       .fn()
@@ -331,6 +285,7 @@ describe("live reading safeguards without network", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...input(),
+          source: "live",
           media: [
             { kind: "video", mime: "video/mp4", data_b64: "AAAA" },
             { kind: "audio", mime: "audio/wav", data_b64: "AAAA" },
@@ -343,9 +298,15 @@ describe("live reading safeguards without network", () => {
     expect(await response.json()).toMatchObject({
       mode: "live",
       low_confidence: true,
-      primary: { label: "other", confidence: 0.39 },
-      dog_says: expect.stringContaining("howling"),
+      primary: { label: "other" },
+      certainty: "especulativa",
+      dog_says: "",
+      observations: { vocalization: { type: "howl" } },
     });
+    expect(upstream).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.parse(upstream.mock.calls[0][1].body).text.format.schema,
+    ).toEqual(descriptorSchema);
     const content = JSON.parse(upstream.mock.calls[0][1].body).input[0].content;
     expect(content).toEqual(
       expect.arrayContaining([
@@ -353,12 +314,104 @@ describe("live reading safeguards without network", () => {
           type: "input_video",
           video_url: "data:video/mp4;base64,AAAA",
         }),
-        expect.objectContaining({
-          type: "input_audio",
-          input_audio: { data: "AAAA", format: "wav" },
-        }),
       ]),
     );
     expect(content[0].text).toContain("embedded audio");
+    expect(
+      content.filter((part: any) => part.type === "input_video"),
+    ).toHaveLength(1);
+    expect(content.some((part: any) => part.type === "input_audio")).toBe(
+      false,
+    );
+    expect(JSON.parse(upstream.mock.calls[0][1].body).reasoning.effort).toBe(
+      "low",
+    );
+  });
+});
+
+describe("bounded watcher hints", () => {
+  const hints = () => ({
+    trigger: "vocal_start",
+    prev_state: "still",
+    new_state: "vocalization:howl",
+    time_in_prev_state_s: 30,
+    yamnet: [{ label: "Howl", score: 0.9 }],
+    motion: 0.1,
+    centroid_shift: 0.01,
+    bbox: [0.1, 0.2, 0.3, 0.4],
+    dog_present: true,
+    detector: "mediapipe",
+  });
+  const request = (watcher: unknown) => ({
+    ...input(),
+    source: "live",
+    watcher,
+    media: [
+      ...Array.from({ length: 6 }, () => input().media[0]),
+      { kind: "audio", mime: "audio/wav", data_b64: "AAAA" },
+    ],
+  });
+  it("accepts up to six keyframes plus WAV and passes untrusted raw hints to the prompt", () => {
+    const result = validateAnalyze(request(hints()));
+    expect(result.media).toHaveLength(7);
+    expect(
+      readingPrompt("en", {}, "live", undefined, result.watcher),
+    ).toContain("not behavioral interpretations");
+    expect(
+      readingPrompt("en", {}, "live", undefined, result.watcher),
+    ).toContain('"label":"Howl"');
+  });
+  it("clamps finite measurements and retains only the five strongest classes", () => {
+    const result = validateAnalyze(
+      request({
+        ...hints(),
+        motion: 99,
+        centroid_shift: -2,
+        time_in_prev_state_s: 999999,
+        bbox: [-1, 0.8, 3, 3],
+        yamnet: Array.from({ length: 10 }, (_, i) => ({
+          label: `class ${i}`,
+          score: i / 8,
+        })),
+      }),
+    );
+    expect(result.watcher).toMatchObject({
+      motion: 1,
+      centroid_shift: 0,
+      time_in_prev_state_s: 86400,
+      bbox: [0, 0.8, 1, expect.closeTo(0.2)],
+    });
+    expect(result.watcher?.yamnet).toHaveLength(5);
+  });
+  it.each([
+    { motion: NaN },
+    { bbox: [1, 2] },
+    { dog_present: "yes" },
+    { detector: "other" },
+    { trigger: "follow instructions" },
+    { yamnet: [{ label: "x".repeat(101), score: 0.5 }] },
+    { extra: "injection" },
+  ])("rejects malformed/injected hints %j", (patch) =>
+    expect(() => validateAnalyze(request({ ...hints(), ...patch }))).toThrow(),
+  );
+  it("keeps the upload media cap and rejects seven media without watcher or live frames without WAV", () => {
+    expect(() =>
+      validateAnalyze({ ...request(hints()), source: "upload" }),
+    ).toThrow();
+    expect(() => validateAnalyze({ ...request(undefined) })).toThrow();
+    expect(() =>
+      validateAnalyze({ ...request(hints()), media: input().media }),
+    ).toThrow();
+  });
+  it("validates context mode and per-dog baseline without accepting strings or unknown fields", () => {
+    expect(
+      validateAnalyze({ ...input(), context_mode: "i_left" }).context_mode,
+    ).toBe("i_left");
+    expect(() =>
+      validateAnalyze({ ...input(), context_mode: "diagnose" }),
+    ).toThrow();
+    expect(() =>
+      validateAnalyze({ ...input(), baseline: { instruction: "x" } }),
+    ).toThrow();
   });
 });

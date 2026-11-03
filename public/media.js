@@ -1,3 +1,4 @@
+import { uploadWatcher } from "./watcher/upload-audio.js";
 import { analyzeAcoustics } from "./acoustics.js";
 // Browser normalization preserves video audio or stops before submitting frames.
 const LIMIT = 30;
@@ -65,8 +66,15 @@ export async function wav(blob) {
   source.buffer = mono;
   source.connect(offline.destination);
   source.start();
-  const pcm = (await offline.startRendering()).getChannelData(0),
-    buffer = new ArrayBuffer(44 + pcm.length * 2),
+  const pcm = (await offline.startRendering()).getChannelData(0);
+  const out = encodeWav(pcm);
+  out.acoustic_hints = analyzeAcoustics(pcm);
+  return out;
+}
+
+/** Encode mono 16 kHz PCM without an AudioContext (also used by the watcher). */
+export function encodeWav(pcm) {
+  const buffer = new ArrayBuffer(44 + pcm.length * 2),
     view = new DataView(buffer);
   const text = (offset, s) => {
     for (let i = 0; i < s.length; i++)
@@ -89,9 +97,7 @@ export async function wav(blob) {
     const n = Math.max(-1, Math.min(1, pcm[i]));
     view.setInt16(44 + i * 2, n < 0 ? n * 32768 : n * 32767, true);
   }
-  const out = new Blob([buffer], { type: "audio/wav" });
-  out.acoustic_hints = analyzeAcoustics(pcm);
-  return out;
+  return new Blob([buffer], { type: "audio/wav" });
 }
 const waitEvent = (el, event, timeout = 15000) =>
   new Promise((resolve, reject) => {
@@ -116,7 +122,7 @@ const waitEvent = (el, event, timeout = 15000) =>
     el.addEventListener("error", bad, { once: true });
   });
 
-export async function normalize(file, durationHint = 0) {
+async function normalizeMedia(file, durationHint = 0) {
   if (file.size > 100 * 1024 * 1024)
     throw new Error("File is too large (100 MB maximum).");
   const url = URL.createObjectURL(file);
@@ -167,15 +173,36 @@ export async function normalize(file, durationHint = 0) {
     if (
       (file.type === "video/mp4" || /\.mp4$/i.test(file.name || "")) &&
       file.size <= 12 * 1024 * 1024
-    )
+    ) {
+      const frames = [];
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        for (const fraction of [0.35, 0.65]) {
+          const seek = waitEvent(video, "seeked");
+          video.currentTime = Math.min(
+            video.duration - 0.01,
+            video.duration * fraction,
+          );
+          await seek;
+          frames.push({
+            kind: "image",
+            mime: "image/jpeg",
+            data_b64: await b64(await jpeg(video, 640)),
+          });
+        }
+      }
       return {
         media: [
           { kind: "video", mime: "video/mp4", data_b64: await b64(file) },
+          ...frames,
+          ...(audio
+            ? [{ kind: "audio", mime: "audio/wav", data_b64: await b64(audio) }]
+            : []),
         ],
         thumbnail,
         acoustic_hints: audio?.acoustic_hints,
         notice: "",
       };
+    }
     const duration = Number.isFinite(video.duration)
       ? video.duration
       : durationHint;
@@ -214,4 +241,10 @@ export async function normalize(file, durationHint = 0) {
     }
     URL.revokeObjectURL(url);
   }
+}
+
+export async function normalize(file, durationHint = 0) {
+  const normalized = await normalizeMedia(file, durationHint);
+  normalized.watcher = await uploadWatcher(normalized.media);
+  return normalized;
 }

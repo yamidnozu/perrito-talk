@@ -1,106 +1,54 @@
+import { vote } from "./vote";
+import { EMPTY_SAM } from "./sam";
+import { EMPTY_SPEECH } from "./asr";
 import type { AnalyzeInput } from "./schema";
+import { emptyDescriptors } from "./descriptors";
+import { interpret } from "./interpret";
 
 export function mockReading(input: AnalyzeInput) {
-  const es = input.lang === "es",
-    s = JSON.stringify(input.context).toLowerCase();
-  const pain = /limp|coje|pain|dolor/.test(s),
-    door = /door|puerta|outside|salir/.test(s),
-    play = /play|jugar|ball|pelota/.test(s),
-    audio = input.media.some((m) => m.kind === "audio" || m.kind === "video");
-  const label = pain
-    ? "pain"
-    : door
-      ? "wants_out"
-      : play
-        ? "play"
-        : audio
-          ? "attention"
-          : "happy";
-  const phrase = pain
-    ? es
-      ? "Algo me molesta. ¿Me ayudas con calma?"
-      : "Something feels uncomfortable. Can you gently help me?"
-    : door
-      ? es
-        ? "¡La puerta! ¿Salimos a explorar?"
-        : "That door! Shall we go exploring?"
-      : play
-        ? es
-          ? "¡Una ronda más con mi pelota!"
-          : "One more round with my ball!"
-        : es
-          ? "Mi lugar favorito es a tu lado."
-          : "My favorite place is right beside you.";
-  const unknown = es
-    ? "No observado en esta simulación."
-    : "Not observed in this simulation.";
+  const es = input.lang === "es";
+  const note = es
+    ? "Demostración: no se inspeccionó el contenido."
+    : "Demo: media content was not inspected.";
+  const descriptors = emptyDescriptors(note);
+  // Synthetic examples are explicitly demos, never claims about attached media.
+  const situation = input.context.situation || "";
+  if (/limp|coje|pain|dolor/i.test(situation))
+    descriptors.pain_signs = { seen: "yes", values: ["limp"], evidence: note };
+  if (/play|jugar|ball|pelota/i.test(situation)) {
+    descriptors.play_bow = {
+      seen: "yes",
+      values: ["forelimbs_lowered_rear_raised"],
+      evidence: note,
+    };
+    descriptors.interaction = {
+      seen: "yes",
+      values: ["person", "interacting"],
+      evidence: note,
+    };
+  }
   return {
-    primary: {
-      label,
-      emoji: pain ? "🩹" : door ? "🚪" : play ? "🎾" : "🐶",
-      confidence: pain ? 0.72 : 0.68,
-      evidence: [unknown],
-    },
-    secondary: [{ label: "attention", confidence: 0.4 }],
-    low_confidence: false,
-    consistency_warnings: [],
-    signals: {
-      vocalization: { type: "none", present: false, description: unknown },
-      bark: {
-        present: audio,
-        description: audio
-          ? es
-            ? "Ejemplo simulado de vocalización; no se analizó el audio."
-            : "Simulated vocalization example; audio was not analyzed."
-          : unknown,
+    ...interpret(
+      input.deep
+        ? vote(
+            [
+              structuredClone(descriptors),
+              structuredClone(descriptors),
+              structuredClone(descriptors),
+            ],
+            input.lang,
+          )
+        : descriptors,
+      input,
+      {
+        sam: { ...EMPTY_SAM },
+        human_speech: { ...EMPTY_SPEECH },
       },
-      tail: unknown,
-      ears: unknown,
-      posture: unknown,
-      face: unknown,
-      body_other: unknown,
-    },
-    dog_says: phrase,
-    explanation: es
-      ? "Ejemplo ilustrativo basado en el contexto y tipo de archivo; no es un análisis real del contenido."
-      : "Illustrative example based on context and file type; this is not a real analysis of the content.",
-    what_to_do: pain
-      ? es
-        ? [
-            "Evita ejercicio intenso.",
-            "Consulta al veterinario por la cojera o dolor.",
-          ]
-        : [
-            "Avoid strenuous exercise.",
-            "Contact your veterinarian about limping or pain.",
-          ]
-      : es
-        ? [
-            "Ofrece una pausa tranquila y observa su respuesta.",
-            "Comprueba agua, paseo y oportunidades de juego.",
-          ]
-        : [
-            "Offer a calm break and observe their response.",
-            "Check water, walk and play opportunities.",
-          ],
-    vet_alert: {
-      flag: pain,
-      urgency: pain ? "soon" : "none",
-      reasons: pain
-        ? [
-            es
-              ? "El contexto menciona dolor o cojera."
-              : "Context mentions pain or limping.",
-          ]
-        : [],
-    },
-    media_observed: es
-      ? "Demostración: no se inspeccionó el contenido."
-      : "Demo: media content was not inspected.",
-    disclaimer: es
-      ? "Interpretación, no un diagnóstico."
-      : "Interpretation, not a diagnosis.",
+    ),
+    media_observed: note,
     mode: "mock",
+    analysis_mode: input.deep ? "deep" : "single",
+    descriptor_calls: 0,
   };
 }
 

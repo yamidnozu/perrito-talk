@@ -59,6 +59,13 @@ export interface CameraClip {
   };
   vet_alert: { flag: boolean; urgency: string; reasons: string[] };
   mode?: "live" | "mock";
+  context_mode?: "at_home" | "i_left" | "visitor" | "playing";
+  interpretations?: {
+    state: string;
+    certainty: string;
+    citations: string[];
+    conditional: boolean;
+  }[];
 }
 export interface CameraInput {
   lang: "en" | "es";
@@ -98,7 +105,37 @@ export function validateCamera(value: unknown): CameraInput {
         },
         readingSchema.properties.signals,
       ) ||
-      !matchesSchema(c.vet_alert, readingSchema.properties.vet_alert) ||
+      !matchesSchema(
+        c.vet_alert && {
+          flag: c.vet_alert.flag,
+          urgency: c.vet_alert.urgency,
+          reasons: c.vet_alert.reasons,
+        },
+        readingSchema.properties.vet_alert,
+      ) ||
+      (c.context_mode !== undefined &&
+        !["at_home", "i_left", "visitor", "playing"].includes(
+          c.context_mode,
+        )) ||
+      (c.interpretations !== undefined &&
+        (!Array.isArray(c.interpretations) ||
+          c.interpretations.length > 30 ||
+          c.interpretations.some(
+            (i) =>
+              !i ||
+              typeof i.state !== "string" ||
+              !/^[a-z_]+$/.test(i.state) ||
+              i.state.length > 80 ||
+              !["alta", "moderada", "baja", "especulativa"].includes(
+                i.certainty,
+              ) ||
+              typeof i.conditional !== "boolean" ||
+              !Array.isArray(i.citations) ||
+              i.citations.length > 10 ||
+              i.citations.some(
+                (id) => typeof id !== "string" || !/^C\d{2,3}$/.test(id),
+              ),
+          ))) ||
       (c.mode !== undefined && !["live", "mock"].includes(c.mode))
     )
       throw new ValidationError("Invalid camera reading.");

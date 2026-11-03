@@ -8,8 +8,8 @@
     "deploy": "wrangler deploy",
     "test": "npm run check:js && vitest run",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write \"src/*.ts\" \"public/*.{js,css,html}\" \"tests/*.ts\" \"scripts/*.mjs\" package.json README.md .github/workflows/ci.yml",
-    "check:js": "for f in public/*.js scripts/*.mjs; do node --check \"$f\" || exit 1; done"
+    "format": "prettier --write \"src/*.ts\" \"public/*.{js,css,html}\" \"public/watcher/*.js\" \"tests/*.ts\" \"scripts/*.mjs\" package.json README.md .github/workflows/ci.yml",
+    "check:js": "for f in public/*.js public/watcher/*.js scripts/*.mjs; do node --check \"$f\" || exit 1; done"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261103.1",

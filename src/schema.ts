@@ -78,15 +78,19 @@ export const patternSchema = object({
   vet_note: str,
 });
 export type AcousticHints = {
+  certainty?: "alta" | "moderada" | "baja" | "especulativa";
+  source?: "engineering_provisional";
   class:
     | "silence"
     | "music_or_noise"
     | "howl"
     | "whine_whimper"
     | "bark"
+    | "growl"
     | "unclear";
   confidence: number;
   metrics: {
+    hnr?: number;
     active: number;
     tonal: number;
     longest_tonal_s: number;
@@ -94,7 +98,211 @@ export type AcousticHints = {
     bursts: number;
   };
 };
+export type WatcherHints = {
+  trigger_types?: string[];
+  sound_scores?: Record<string, number>;
+  observations?: {
+    vocal_type: string;
+    bursts: number;
+    sustained_s: number;
+    activity: string;
+  };
+  trigger:
+    | "state_change"
+    | "vocal_start"
+    | "vocal_sustained"
+    | "dog_enter"
+    | "dog_exit"
+    | "motion_spike"
+    | "heartbeat"
+    | "upload";
+  prev_state: string | null;
+  new_state: string;
+  time_in_prev_state_s: number;
+  yamnet: { label: string; score: number }[];
+  motion: number;
+  centroid_shift: number;
+  bbox: [number, number, number, number] | null;
+  dog_present: boolean | null;
+  detector: "mediapipe" | "fallback";
+};
+
+/** Reject malformed hints; clamp finite measurements and bound payload sizes. */
+export function validateWatcher(value: unknown): WatcherHints {
+  const w = value as WatcherHints;
+  const keys = [
+    "trigger",
+    "prev_state",
+    "new_state",
+    "time_in_prev_state_s",
+    "yamnet",
+    "motion",
+    "centroid_shift",
+    "bbox",
+    "dog_present",
+    "detector",
+  ];
+  const state = (v: unknown) =>
+    typeof v === "string" && /^[a-z_]+(?::[a-z_]+)?$/.test(v) && v.length <= 60;
+  if (
+    !w ||
+    typeof w !== "object" ||
+    Array.isArray(w) ||
+    Object.keys(w).filter(
+      (k) => !["observations", "trigger_types", "sound_scores"].includes(k),
+    ).length !== keys.length ||
+    Object.keys(w).some(
+      (k) =>
+        !keys.includes(k) &&
+        !["observations", "trigger_types", "sound_scores"].includes(k),
+    ) ||
+    ![
+      "state_change",
+      "vocal_start",
+      "vocal_sustained",
+      "dog_enter",
+      "dog_exit",
+      "motion_spike",
+      "heartbeat",
+      "upload",
+    ].includes(w.trigger) ||
+    !(w.prev_state === null || state(w.prev_state)) ||
+    !state(w.new_state) ||
+    !["mediapipe", "fallback"].includes(w.detector) ||
+    !(w.dog_present === null || typeof w.dog_present === "boolean") ||
+    !Array.isArray(w.yamnet) ||
+    w.yamnet.length > 20 ||
+    !(w.bbox === null || (Array.isArray(w.bbox) && w.bbox.length === 4))
+  )
+    throw new ValidationError("Invalid watcher hints.");
+  const clamp = (n: number, max = 1) => {
+    if (typeof n !== "number" || !Number.isFinite(n))
+      throw new ValidationError("Invalid watcher measurement.");
+    return Math.max(0, Math.min(max, n));
+  };
+  let observations: WatcherHints["observations"];
+  if (w.observations !== undefined) {
+    const o = w.observations;
+    if (
+      !o ||
+      typeof o !== "object" ||
+      Array.isArray(o) ||
+      Object.keys(o).sort().join() !==
+        "activity,bursts,sustained_s,vocal_type" ||
+      !["bark", "howl", "whine", "growl", "yip", "none", "unclear"].includes(
+        o.vocal_type,
+      ) ||
+      ![
+        "still",
+        "active",
+        "restless",
+        "absent",
+        "at_zone",
+        "vocalization",
+        "unknown",
+      ].includes(o.activity) ||
+      !Number.isInteger(o.bursts)
+    )
+      throw new ValidationError("Invalid watcher observations.");
+    observations = {
+      vocal_type: o.vocal_type,
+      bursts: clamp(o.bursts, 100000),
+      sustained_s: clamp(o.sustained_s, 86400),
+      activity: o.activity,
+    };
+  }
+  if (
+    w.trigger_types !== undefined &&
+    (!Array.isArray(w.trigger_types) ||
+      w.trigger_types.length > 7 ||
+      w.trigger_types.some(
+        (type) =>
+          ![
+            "state_change",
+            "vocal_start",
+            "vocal_sustained",
+            "dog_enter",
+            "dog_exit",
+            "motion_spike",
+            "heartbeat",
+          ].includes(type),
+      ))
+  )
+    throw new ValidationError("Invalid watcher trigger reasons.");
+  if (
+    w.sound_scores !== undefined &&
+    (!w.sound_scores ||
+      typeof w.sound_scores !== "object" ||
+      Array.isArray(w.sound_scores) ||
+      Object.keys(w.sound_scores).some(
+        (key) =>
+          !["dog", "bark", "howl", "whine", "growl", "yip"].includes(key),
+      ))
+  )
+    throw new ValidationError("Invalid watcher sound scores.");
+  const sound_scores = w.sound_scores
+    ? Object.fromEntries(
+        Object.entries(w.sound_scores).map(([key, score]) => [
+          key,
+          clamp(score),
+        ]),
+      )
+    : undefined;
+  const yamnet = w.yamnet
+    .map((c) => {
+      if (
+        !c ||
+        typeof c !== "object" ||
+        Array.isArray(c) ||
+        Object.keys(c).length !== 2 ||
+        !Object.hasOwn(c, "label") ||
+        !Object.hasOwn(c, "score") ||
+        typeof c.label !== "string" ||
+        !c.label.length ||
+        c.label.length > 100
+      )
+        throw new ValidationError("Invalid watcher YAMNet scores.");
+      return { label: c.label, score: clamp(c.score) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+  const bbox = w.bbox?.map((n) => clamp(n)) as WatcherHints["bbox"];
+  if (bbox) {
+    bbox[2] = Math.min(bbox[2], 1 - bbox[0]);
+    bbox[3] = Math.min(bbox[3], 1 - bbox[1]);
+  }
+  return {
+    ...(observations ? { observations } : {}),
+    ...(w.trigger_types
+      ? { trigger_types: [...new Set(w.trigger_types)] }
+      : {}),
+    ...(sound_scores ? { sound_scores } : {}),
+    trigger: w.trigger,
+    prev_state: w.prev_state,
+    new_state: w.new_state,
+    time_in_prev_state_s: clamp(w.time_in_prev_state_s, 86400),
+    yamnet,
+    motion: clamp(w.motion),
+    centroid_shift: clamp(w.centroid_shift),
+    bbox: bbox || null,
+    dog_present: w.dog_present,
+    detector: w.detector,
+  };
+}
+
 export type AnalyzeInput = {
+  deep?: boolean;
+  watcher?: WatcherHints;
+  context_mode?: "at_home" | "i_left" | "visitor" | "playing";
+  baseline?: {
+    pitch_hz: number;
+    peak_hz: number;
+    hnr: number;
+    bark_rate: number;
+    motion_p25: number;
+    motion_p75: number;
+    samples: number;
+  };
   acoustic_hints?: AcousticHints;
   source?: "upload" | "camera" | "live";
   lang: "en" | "es";
@@ -124,7 +332,7 @@ export function validateAnalyze(value: unknown): AnalyzeInput {
     Array.isArray(v.context) ||
     !Array.isArray(v.media) ||
     v.media.length < 1 ||
-    v.media.length > 5
+    v.media.length > (v.watcher !== undefined && v.source === "live" ? 8 : 5)
   )
     throw new ValidationError("Invalid language, context or media.");
   for (const [key, val] of Object.entries(v.context))
@@ -141,6 +349,41 @@ export function validateAnalyze(value: unknown): AnalyzeInput {
     v.source !== "live"
   )
     throw new ValidationError("Invalid source.");
+  if (v.deep !== undefined && typeof v.deep !== "boolean")
+    throw new ValidationError("Invalid deep analysis option.");
+  if (v.source === "live" && v.deep)
+    throw new ValidationError("Live uses a single descriptor call.");
+  if (
+    v.context_mode !== undefined &&
+    !["at_home", "i_left", "visitor", "playing"].includes(v.context_mode)
+  )
+    throw new ValidationError("Invalid context mode.");
+  if (v.baseline !== undefined) {
+    const keys = [
+      "pitch_hz",
+      "peak_hz",
+      "hnr",
+      "bark_rate",
+      "motion_p25",
+      "motion_p75",
+      "samples",
+    ];
+    if (
+      !v.baseline ||
+      typeof v.baseline !== "object" ||
+      Array.isArray(v.baseline) ||
+      Object.keys(v.baseline).length !== keys.length ||
+      Object.entries(v.baseline).some(
+        ([k, n]) =>
+          !keys.includes(k) ||
+          typeof n !== "number" ||
+          !Number.isFinite(n) ||
+          n < (k === "hnr" ? -60 : 0) ||
+          n > (k === "hnr" ? 60 : 10000000),
+      )
+    )
+      throw new ValidationError("Invalid per-dog baseline.");
+  }
   if (v.acoustic_hints !== undefined) {
     const h = v.acoustic_hints;
     if (
@@ -151,18 +394,26 @@ export function validateAnalyze(value: unknown): AnalyzeInput {
         "howl",
         "whine_whimper",
         "bark",
+        "growl",
         "unclear",
       ].includes(h.class) ||
       !Number.isFinite(h.confidence) ||
       h.confidence < 0 ||
       h.confidence > 1 ||
+      (h.certainty !== undefined &&
+        !["alta", "moderada", "baja", "especulativa"].includes(h.certainty)) ||
+      (h.source !== undefined && h.source !== "engineering_provisional") ||
       !h.metrics ||
       Object.keys(h).some(
-        (k) => !["class", "confidence", "metrics"].includes(k),
+        (k) =>
+          !["class", "confidence", "metrics", "certainty", "source"].includes(
+            k,
+          ),
       ) ||
       Object.keys(h.metrics).some(
         (k) =>
           ![
+            "hnr",
             "active",
             "tonal",
             "longest_tonal_s",
@@ -178,11 +429,30 @@ export function validateAnalyze(value: unknown): AnalyzeInput {
         bursts: 240000,
       }).some(([k, max]) => {
         const n = h.metrics[k as keyof AcousticHints["metrics"]];
-        return !Number.isFinite(n) || n < 0 || n > max;
+        return !Number.isFinite(n) || (n as number) < 0 || (n as number) > max;
       }) ||
+      (h.metrics.hnr !== undefined &&
+        (!Number.isFinite(h.metrics.hnr) ||
+          h.metrics.hnr < -60 ||
+          h.metrics.hnr > 60)) ||
       !Number.isInteger(h.metrics.bursts)
     )
       throw new ValidationError("Invalid acoustic hints.");
+  }
+  if (v.watcher !== undefined) {
+    v.watcher = validateWatcher(v.watcher);
+    if (
+      v.source === "live" &&
+      (v.media.some(
+        (m) => !m || !["image", "audio", "video"].includes(m.kind),
+      ) ||
+        v.media.filter((m) => m.kind === "image").length > 6 ||
+        v.media.filter((m) => m.kind === "video").length > 1 ||
+        v.media.filter((m) => m.kind === "audio").length !== 1)
+    )
+      throw new ValidationError(
+        "Live watcher requires up to six frames, one video and one audio input.",
+      );
   }
   let bytes = 0;
   for (const m of v.media) {
@@ -234,61 +504,13 @@ export function matchesSchema(value: unknown, schema: any): boolean {
       (schema.maxItems === undefined || value.length <= schema.maxItems) &&
       value.every((v) => matchesSchema(v, schema.items))
     );
-  if (schema.type === "number")
+  if (schema.type === "number" || schema.type === "integer")
     return (
       typeof value === "number" &&
       Number.isFinite(value) &&
+      (schema.type !== "integer" || Number.isInteger(value)) &&
       value >= schema.minimum &&
       value <= schema.maximum
     );
   return typeof value === schema.type;
-}
-
-/** Apply deterministic safeguards after schema validation without mutating the reading. */
-export function calibrateReading<
-  T extends {
-    primary: { label: string; confidence: number };
-    signals: { vocalization: { present: boolean; type: string } };
-    low_confidence: boolean;
-    consistency_warnings: string[];
-    dog_says: string;
-  },
->(reading: T, lang: "en" | "es", hints?: AcousticHints): T {
-  const result = structuredClone(reading);
-  const voice = result.signals.vocalization;
-  if (
-    ((voice.present && ["whine", "cry", "howl"].includes(voice.type)) ||
-      (hints &&
-        hints.confidence >= 0.5 &&
-        ["howl", "whine_whimper"].includes(hints.class))) &&
-    ["happy", "tired", "relaxed"].includes(result.primary.label)
-  ) {
-    result.primary.confidence = Math.min(result.primary.confidence, 0.39);
-    result.consistency_warnings.push(
-      lang === "es"
-        ? "La vocalización contradice la interpretación de felicidad o descanso."
-        : "The vocalization conflicts with the happy or resting interpretation.",
-    );
-  }
-  if (result.primary.confidence < 0.4) {
-    result.low_confidence = true;
-    result.primary.label = "other";
-    const sounds: Record<string, [string, string]> = {
-      bark: ["Estoy ladrando. ", "I'm barking. "],
-      howl: ["Estoy aullando. ", "I'm howling. "],
-      whine: ["Estoy gimiendo. ", "I'm whimpering. "],
-      cry: ["Estoy llorando o dando quejidos. ", "I'm crying or yelping. "],
-      growl: ["Estoy gruñendo. ", "I'm growling. "],
-      pant: ["Estoy jadeando. ", "I'm panting. "],
-    };
-    const sound = voice.present
-      ? sounds[voice.type]?.[lang === "es" ? 0 : 1] || ""
-      : "";
-    result.dog_says =
-      sound +
-      (lang === "es"
-        ? "No estoy seguro… quizá necesito que observes mis señales un poco más."
-        : "I'm not sure… perhaps I need you to watch my signals a little longer.");
-  }
-  return result;
 }

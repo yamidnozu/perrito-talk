@@ -1,3 +1,6 @@
+import { createBaseline } from "./watcher/baseline.js";
+import { certaintyWord, dogLineFor, observedTexts } from "./evidence-utils.js";
+import { renderReading, mountContext } from "./reading-ui.js";
 import { mountDevicePicker, openMedia } from "./devices.js";
 import {
   BLUR_NOTICE,
@@ -15,7 +18,7 @@ const $ = (id) => document.getElementById(id);
 const words = {
   en: {
     cameraMode: "Camera mode",
-    liveMode: "Live mode",
+    liveMode: "Watcher",
     cameraHelp:
       "Upload up to 8 security-camera clips. Times default to file modification time; edit to match recording time. Gaps are unobserved.",
     cameraRun: "Analyze clips",
@@ -45,7 +48,9 @@ const words = {
     breed: "Breed",
     age: "Age",
     situation: "What's happening?",
-    analyze: "Translate this moment ✦",
+    analyze: "Read this moment ✦",
+    deepAnalyze: "Deep analysis",
+    deepCost: "About three times the model calls; retries may add calls.",
     sample: "Just curious? Try a sample →",
     listen: "LET’S LISTEN A LITTLE CLOSER",
     welcomeTitle: "Their world.\nIn a few words.",
@@ -62,7 +67,7 @@ const words = {
     localOnly:
       "Saved only in this browser. A little journal of your life together.",
     patterns: "Ask Muse about patterns ✦",
-    footer: "Made for the love of dogs. Interpretation, not a diagnosis.",
+    footer: "Made for the love of dogs.",
     cardTitle: "A little woof to keep.",
     download: "Download",
     share: "Share",
@@ -123,7 +128,7 @@ const words = {
   es: {
     read: "Entender a mi perro",
     cameraMode: "Modo cámara",
-    liveMode: "Modo en vivo",
+    liveMode: "Vigilante",
     cameraHelp:
       "Sube hasta 8 clips de seguridad. La hora predeterminada es la modificación del archivo; ajústala a la grabación. Los intervalos no se observan.",
     cameraRun: "Analizar clips",
@@ -152,7 +157,10 @@ const words = {
     breed: "Raza",
     age: "Edad",
     situation: "¿Qué está pasando?",
-    analyze: "Traduce este momento ✦",
+    analyze: "Lee este momento ✦",
+    deepAnalyze: "Análisis profundo",
+    deepCost:
+      "Aproximadamente el triple de llamadas al modelo; los reintentos pueden añadir llamadas.",
     sample: "¿Curiosidad? Prueba un ejemplo →",
     listen: "ESCUCHEMOS UN POCO MÁS DE CERCA",
     welcomeTitle: "Su mundo.\nEn pocas palabras.",
@@ -168,7 +176,7 @@ const words = {
     clear: "Borrar diario",
     localOnly: "Guardado solo en este navegador. Un diario de su vida juntos.",
     patterns: "Pregúntale a Muse sobre patrones ✦",
-    footer: "Por amor a los perros. Interpretación, no un diagnóstico.",
+    footer: "Por amor a los perros.",
     cardTitle: "Un guau para guardar.",
     download: "Descargar",
     share: "Compartir",
@@ -337,6 +345,7 @@ function lock(value) {
   busy = value;
   for (const id of [
     "analyze",
+    "deepAnalyze",
     "cameraFiles",
     "cameraRun",
     "cameraDemo",
@@ -350,7 +359,8 @@ function lock(value) {
     "patterns",
     "language",
   ])
-    $(id).disabled = value || (id === "analyze" && !selected);
+    $(id).disabled =
+      value || (["analyze", "deepAnalyze"].includes(id) && !selected);
 }
 
 async function api(path, data, mock = false) {
@@ -500,7 +510,7 @@ window.addEventListener("pagehide", () => {
   clearTimeout(recordTimer);
 });
 
-async function analyze(mock = false) {
+async function analyze(mock = false, deep = false) {
   if (!selected || busy) return;
   lock(true);
   error("");
@@ -517,6 +527,11 @@ async function analyze(mock = false) {
       "analyze",
       {
         lang: requestLang,
+        source: "upload",
+        deep,
+        watcher: selected.watcher,
+        context_mode: document.getElementById("uploadContextMode").value,
+        baseline: baselineForRequest(),
         context: {
           breed: $("breed").value,
           age: $("age").value,
@@ -573,84 +588,14 @@ function renderResult(r) {
   root.replaceChildren();
   root.hidden = false;
   $("welcome").hidden = true;
-  root.append(
-    el("span", t(r.mode === "mock" ? "mock" : "live"), "badge"),
-    el("div", r.primary.emoji, "result-emoji"),
-    el("h2", t("labels")[r.primary.label] || r.primary.label),
-    el("div", r.dog_says, "speech"),
-  );
-  if (r.low_confidence || r.primary.confidence < 0.4)
-    root.append(
-      el("span", lang === "es" ? "Baja confianza" : "Low confidence", "badge"),
-    );
-  for (const warning of r.consistency_warnings || [])
-    root.append(el("p", warning));
-  const confidence = el("div", undefined, "confidence"),
-    fill = el("span");
-  fill.style.width = `${Math.round(r.primary.confidence * 100)}%`;
-  confidence.append(fill);
-  root.append(
-    confidence,
-    el(
-      "small",
-      `${Math.round(r.primary.confidence * 100)}% ${t("confidence")}`,
-    ),
-    el("p", r.explanation),
-  );
-  const signals = el("div", undefined, "signals");
-  if (r.acoustic_hints)
-    signals.append(
-      el("span", heardText(r.acoustic_hints.class, lang), "badge"),
-    );
-  for (const [key, value] of Object.entries(r.signals)) {
-    const d = el("details"),
-      s = el(
-        "summary",
-        t("signalNames")[key] ||
-          (lang === "es" ? "Vocalización" : "Vocalization"),
-      );
-    d.append(
-      s,
-      el("span", typeof value === "object" ? value.description : value),
-    );
-    signals.append(d);
-  }
-  root.append(signals);
-  if (r.secondary.length)
-    root.append(
-      el(
-        "p",
-        r.secondary
-          .map(
-            (s) => `${t("labels")[s.label]} ${Math.round(s.confidence * 100)}%`,
-          )
-          .join(" · "),
-      ),
-    );
-  if (r.vet_alert.flag) {
-    const v = el("div", undefined, "vet");
-    v.append(
-      el(
-        "strong",
-        `⚕ ${t("vet")} · ${{ none: lang === "es" ? "ninguna" : "none", monitor: lang === "es" ? "observar" : "monitor", soon: lang === "es" ? "pronto" : "soon", emergency: lang === "es" ? "emergencia" : "emergency" }[r.vet_alert.urgency]}`,
-      ),
-    );
-    r.vet_alert.reasons.forEach((reason) => v.append(el("div", reason)));
-    root.append(v);
-  }
-  root.append(el("h3", t("actions")));
-  const actions = el("ul");
-  r.what_to_do.forEach((a) => actions.append(el("li", a)));
-  const observed = el("details");
-  observed.append(el("summary", t("observed")), el("p", r.media_observed));
-  root.append(actions, observed);
+  renderReading(root, r, { lang, media: selected?.media || [] });
   const buttons = el("div", undefined, "result-actions");
   if ("speechSynthesis" in window) {
     const speak = el("button", t("speak"));
     speak.onclick = () => {
       speechSynthesis.cancel();
-      const voice = new SpeechSynthesisUtterance(r.dog_says);
-      voice.lang = r.lang === "es" ? "es-ES" : "en-US";
+      const voice = new SpeechSynthesisUtterance(dogLineFor(r, lang));
+      voice.lang = lang === "es" ? "es-ES" : "en-US";
       speechSynthesis.speak(voice);
     };
     buttons.append(speak);
@@ -658,7 +603,7 @@ function renderResult(r) {
   const card = el("button", t("card"));
   card.onclick = () => makeCard(r, card);
   buttons.append(card);
-  root.append(buttons, el("p", `${r.disclaimer} ${t("disclaimer")}`, "note"));
+  root.append(buttons);
 }
 
 function renderDiary() {
@@ -784,7 +729,11 @@ async function canvasCard(r) {
   ctx.fillStyle = "#293e35";
   ctx.font = "bold 38px system-ui";
   ctx.textAlign = "center";
-  const words = r.dog_says.split(/\s+/),
+  const words = (
+      dogLineFor(r, lang) ||
+      observedTexts(r, lang).join(" · ") ||
+      (lang === "es" ? "Lectura incierta" : "Uncertain reading")
+    ).split(/\s+/),
     lines = [];
   let line = "";
   for (const word of words) {
@@ -800,7 +749,11 @@ async function canvasCard(r) {
   }
   lines.slice(0, 5).forEach((s, i) => ctx.fillText(s, 512, 680 + i * 42, 780));
   ctx.font = "bold 26px system-ui";
-  ctx.fillText("PerritoTalk 🐾", 512, 955);
+  ctx.fillText(
+    `PerritoTalk 🐾 · ${certaintyWord(r.certainty, lang)}`,
+    512,
+    955,
+  );
   ctx.font = "17px system-ui";
   ctx.fillText(
     lang === "es"
@@ -820,8 +773,12 @@ async function makeCard(r, button) {
     const result = await api(
       "card",
       {
-        lang: r.lang || lang,
-        dog_says: r.dog_says,
+        lang,
+        dog_says:
+          dogLineFor(r, lang) ||
+          observedTexts(r, lang).join(" · ") ||
+          (lang === "es" ? "Lectura incierta" : "Uncertain reading"),
+        certainty: r.certainty,
         label: r.primary.label,
         emoji: r.primary.emoji,
       },
@@ -863,7 +820,7 @@ $("share").onclick = async () => {
     else
       await navigator.share({
         title: "PerritoTalk",
-        text: current?.dog_says,
+        text: current ? dogLineFor(current, lang) : "",
         url: "https://perritos.edevcore.com",
       });
   } catch (e) {
@@ -951,6 +908,9 @@ async function runCamera(mock = false) {
         {
           lang,
           source: "camera",
+          watcher: normalized.watcher,
+          context_mode: document.getElementById("cameraContextMode").value,
+          baseline: baselineForRequest(),
           context: { situation: c.context.value },
           media: normalized.media,
           acoustic_hints: normalized.acoustic_hints,
@@ -968,6 +928,10 @@ async function runCamera(mock = false) {
         mode: r.mode,
         thumbnail: normalized.thumbnail,
         lang,
+        reading: r,
+        interpretations: r.interpretations,
+        context_mode: r.context_mode,
+        media: normalized.media,
       });
       c.progress.textContent = `${r.acoustic_hints ? `${heardText(r.acoustic_hints.class, lang)} · ` : ""}${prefix} · ${t(r.mode === "mock" ? "mock" : "live")} · ${normalized.notice ? t(normalized.notice) : "✓"}`;
     }
@@ -986,7 +950,9 @@ async function runCamera(mock = false) {
   }
 }
 async function summarizeCamera(mock) {
-  const clips = cameraReadings.map(({ thumbnail, lang, ...c }) => c);
+  const clips = cameraReadings.map(
+    ({ thumbnail, lang, media, reading, ...c }) => c,
+  );
   const summary = await api("camera/summary", { lang, clips }, mock);
   const root = $("cameraResult");
   root.replaceChildren(
@@ -998,6 +964,11 @@ async function summarizeCamera(mock) {
     cameraHeuristics({ lang, clips }),
   );
   for (const alert of summary.alerts) {
+    if (
+      alert.type === "pain_signs" &&
+      cameraReadings.some((clip) => clip.reading?.vet_alert?.flag)
+    )
+      continue;
     const banner = el("div", undefined, `camera-alert ${alert.severity}`);
     const details = el("details");
     details.append(
@@ -1024,6 +995,14 @@ async function summarizeCamera(mock) {
     timeline.append(row);
   }
   root.append(timeline);
+  for (const clip of cameraReadings) {
+    const readingRoot = el("article");
+    renderReading(readingRoot, clip.reading, {
+      lang: clip.lang,
+      media: clip.media,
+    });
+    root.append(readingRoot);
+  }
   const recommendations = el("ul");
   summary.recommendations.forEach((r) => recommendations.append(el("li", r)));
   root.append(recommendations);
@@ -1092,3 +1071,24 @@ mountLive({
   api,
   labelOf: (l) => words[lang].labels[l] || l.replaceAll("_", " "),
 });
+
+mountContext(
+  document.getElementById("situation").closest("details").parentElement,
+  () => lang,
+  "uploadContextMode",
+);
+mountContext(
+  document.getElementById("cameraFiles").parentElement,
+  () => lang,
+  "cameraContextMode",
+);
+
+function baselineForRequest() {
+  let profile = "default";
+  try {
+    profile = localStorage.getItem("watcherDog") || profile;
+  } catch {}
+  return createBaseline(profile).summary();
+}
+
+$("deepAnalyze").onclick = () => analyze(false, true);

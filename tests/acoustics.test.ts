@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { analyzeAcoustics } from "../public/acoustics.js";
-import { validateAnalyze, calibrateReading } from "../src/schema";
+import { validateAnalyze } from "../src/schema";
 import { readingPrompt } from "../src/prompts";
 import { mockReading } from "../src/mock";
 const input = {
@@ -20,10 +20,14 @@ function tones(hz: number, duration: number, count: number) {
   return pcm;
 }
 describe("acoustic pre-analysis", () => {
-  it("detects sustained 550 Hz howling", () => {
-    expect(analyzeAcoustics(tones(550, 1.5, 1)).class).toBe("howl");
+  it("restores a provisional howl guess with word certainty", () => {
+    const hints = analyzeAcoustics(tones(550, 1.5, 1));
+    expect(hints.class).toBe("howl");
+    expect(hints.certainty).toBe("baja");
+    expect(hints.metrics.pitch_hz).toBeGreaterThan(0);
+    expect(Number.isFinite(hints.metrics.hnr)).toBe(true);
   });
-  it("detects repeated 700 Hz whimpers", () => {
+  it("restores a provisional whine guess from repeated tonal bursts", () => {
     const hints = analyzeAcoustics(tones(700, 0.4, 7));
     expect(hints.class).toBe("whine_whimper");
     expect(hints.metrics.bursts).toBe(7);
@@ -46,20 +50,33 @@ describe("acoustic pre-analysis", () => {
         .acoustic_hints,
     ).toEqual(h);
   });
-  it("passes hints to the prompt and flags contradictory calm labels despite NO_AUDIO", () => {
+  it("passes raw hints without prescribing behavior from pitch or sound class", () => {
     const hints = analyzeAcoustics(tones(550, 1.5, 1));
-    expect(readingPrompt("es", {}, "live", hints)).toContain('"class":"howl"');
-    const reading = mockReading(input);
-    reading.primary.label = "happy";
-    reading.primary.confidence = 0.9;
-    reading.signals.vocalization.present = false;
-    const result = calibrateReading(reading, "es", hints);
-    expect(result.primary.confidence).toBeLessThan(0.4);
-    expect(result.consistency_warnings).toHaveLength(1);
-    expect(reading.primary.confidence).toBe(0.9);
-    expect(
-      calibrateReading(reading, "es", { ...hints, confidence: 0.49 }).primary
-        .confidence,
-    ).toBe(0.9);
+    const prompt = readingPrompt("es", {}, "live", hints);
+    expect(prompt).toContain('"class":"howl"');
+    expect(prompt).toContain('"certainty":"baja"');
+    expect(prompt).toContain("No absolute Hz boundary");
+    expect(prompt).not.toContain("confidence >=0.5");
   });
+});
+
+it("classifies low sustained tone as provisional growl without claiming a mood", () => {
+  const hints = analyzeAcoustics(tones(100, 1.5, 1));
+  expect(hints.class).toBe("growl");
+  expect(hints.certainty).toBe("baja");
+  expect(hints.source).toBe("engineering_provisional");
+  expect(hints.confidence).toBeGreaterThan(0);
+});
+it("classifies short rough bursts as bark instead of returning unclear for everything", () => {
+  const pcm = new Float32Array(64000);
+  let seed = 11;
+  for (let burst = 0; burst < 5; burst++)
+    for (let i = 0; i < 1280; i++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      pcm[8000 + burst * 8000 + i] = ((seed / 2 ** 32) * 2 - 1) * 0.6;
+    }
+  const hints = analyzeAcoustics(pcm);
+  expect(hints.class).toBe("bark");
+  expect(hints.metrics.bursts).toBeGreaterThanOrEqual(2);
+  expect(hints.certainty).toBe("baja");
 });
