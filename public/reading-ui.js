@@ -3,6 +3,7 @@ import {
   certaintyWord,
   stateLabel,
   observedTexts,
+  behaviorSummary,
   dogLineFor,
   contextQuestions,
   VET_TEXT,
@@ -60,7 +61,11 @@ export function citationChip(id) {
   });
   return chip;
 }
-export function renderReading(root, r, { lang = "en", media = [] } = {}) {
+export function renderReading(
+  root,
+  r,
+  { lang = "en", media = [], noDog = false } = {},
+) {
   const es = lang === "es";
   root.replaceChildren(
     element(
@@ -82,8 +87,27 @@ export function renderReading(root, r, { lang = "en", media = [] } = {}) {
         "badge",
       ),
     );
+  const doing = behaviorSummary(r, lang);
+  const head = element("section", null, "reading-headline");
+  head.append(
+    element("small", es ? "Qué está haciendo" : "What your dog is doing"),
+    element(
+      "p",
+      doing ||
+        (noDog
+          ? es
+            ? "No se ve un perro en la cámara"
+            : "No dog visible on camera"
+          : es
+            ? "No se pudo ver con claridad qué hace"
+            : "Could not clearly see what the dog is doing"),
+    ),
+  );
+  root.append(head);
   const observed = element("section", null, "reading-observed");
-  observed.append(element("h3", es ? "Lo que se observó" : "Observed"));
+  observed.append(
+    element("h3", es ? "Detalle de lo observado" : "Observation details"),
+  );
   const descriptions = observedTexts(r, lang);
   const list = element("ul");
   for (const text of descriptions) list.append(element("li", text));
@@ -99,7 +123,6 @@ export function renderReading(root, r, { lang = "en", media = [] } = {}) {
               : "No verifiable observations.",
         ),
   );
-  root.append(observed);
   const dogLine = dogLineFor(r, lang);
   if (dogLine) {
     const line = element("div", null, "speech");
@@ -137,7 +160,29 @@ export function renderReading(root, r, { lang = "en", media = [] } = {}) {
             : "Possible confusion with human sounds (C42).",
       ),
     );
+  if ((r.interpretations || []).every((i) => !i || i.state === "unspecified"))
+    meanings.append(
+      element(
+        "p",
+        es
+          ? "No le atribuimos una emoción: ninguna señal observada coincide con una regla de la base de evidencia. Sueño, hambre o alegría no tienen una regla validada, así que solo describimos lo que se ve y se oye."
+          : "We do not attribute an emotion: no observed signal matches a rule in the evidence base. Sleep, hunger or joy have no validated rule, so we only describe what is seen and heard.",
+        "note",
+      ),
+    );
+  const how = element("details", null, "reading-how");
+  how.append(
+    element("summary", es ? "¿Cómo se decide?" : "How is this decided?"),
+    element(
+      "p",
+      es
+        ? "Muse Spark solo describe señales observables (postura, cola, sonido…). El código compara esas señales con una base de estudios revisados y limita la certeza a lo que esos estudios permiten. Toca un código (p. ej. C06) para abrir la fuente."
+        : "Muse Spark only describes observable signals (posture, tail, sound…). Code matches those signals against a base of peer-reviewed studies and caps certainty at what they support. Tap a code (e.g. C06) to open the source.",
+    ),
+  );
+  meanings.append(how);
   root.append(meanings);
+  root.append(observed);
   const unknown = element("section");
   unknown.append(element("h3", es ? "Lo que falta saber" : "Still unknown"));
   const questions = contextQuestions(r.required_context || [], lang);

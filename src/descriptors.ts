@@ -46,6 +46,22 @@ export const descriptorSchema = object({
     "interacting",
   ]),
   activity: descriptor(["still", "active", "restless", "pacing"]),
+  // Observable actions only (what the dog is doing); never mapped to an emotion.
+  behavior: descriptor([
+    "lying_down",
+    "eyes_closed",
+    "sitting",
+    "standing",
+    "walking",
+    "running",
+    "eating",
+    "chewing_object",
+    "drinking",
+    "sniffing",
+    "digging",
+    "chasing_object",
+    "fixed_stare",
+  ]),
   scene: descriptor([
     "sudden_stimulus",
     "external_stimulus",
@@ -95,6 +111,7 @@ export type Descriptors = Record<
   | "pain_signs"
   | "interaction"
   | "activity"
+  | "behavior"
   | "scene",
   Descriptor
 > & {
@@ -129,6 +146,7 @@ export function emptyDescriptors(text: string): Descriptors {
     pain_signs: entry(),
     interaction: entry(),
     activity: entry(),
+    behavior: entry(),
     scene: entry(),
     scene_notes: { seen: "unclear", evidence: text },
     vocalization: {

@@ -56,7 +56,10 @@ const labels = {
     "posible dolor: consulta veterinaria",
     "possible pain: consult a veterinarian",
   ],
-  unspecified: ["significado desconocido", "unknown meaning"],
+  unspecified: [
+    "sin señal con respaldo científico suficiente",
+    "no signal with enough scientific support",
+  ],
   arousal_not_valence: [
     "activación, sin saber si es agradable",
     "arousal, without knowing its valence",
@@ -232,7 +235,52 @@ const OBSERVABLE_WORDS = {
     "Observed heat or exercise",
   ],
   trembling: ["Temblor", "Trembling"],
+  lying_down: ["Tumbado", "Lying down"],
+  eyes_closed: ["Ojos cerrados", "Eyes closed"],
+  sitting: ["Sentado", "Sitting"],
+  standing: ["De pie", "Standing"],
+  walking: ["Camina", "Walking"],
+  running: ["Corre", "Running"],
+  eating: ["Come", "Eating"],
+  chewing_object: ["Mastica algo", "Chewing something"],
+  drinking: ["Bebe", "Drinking"],
+  sniffing: ["Olfatea", "Sniffing"],
+  digging: ["Escarba", "Digging"],
+  chasing_object: ["Persigue un objeto", "Chasing an object"],
+  fixed_stare: ["Mirada fija", "Fixed stare"],
 };
+
+/** "What the dog is doing": observable actions and sounds only, no emotion.
+ * Priority: audible vocalization, observed actions, activity, company. */
+export function behaviorSummary(reading, lang) {
+  const o = reading?.observations || {},
+    i = lang === "es" ? 0 : 1,
+    out = [];
+  const v = o.vocalization;
+  const voice = {
+    bark: ["Ladra", "Barking"],
+    howl: ["Aúlla", "Howling"],
+    whine: ["Posible quejido", "Possible whine"],
+    growl: ["Gruñe", "Growling"],
+  }[v?.seen === "yes" ? v.type : ""];
+  if (voice) out.push(voice[i]);
+  const values = (key) => (o[key]?.seen === "yes" ? o[key].values || [] : []);
+  for (const value of values("behavior")) {
+    if (value === "standing" && values("behavior").length > 1) continue;
+    if (OBSERVABLE_WORDS[value]) out.push(OBSERVABLE_WORDS[value][i]);
+  }
+  if (out.length < 2) {
+    const a = values("activity")[0];
+    if (a) out.push(OBSERVABLE_WORDS[a][i]);
+  }
+  if (values("tail").includes("wagging")) out.push(OBSERVABLE_WORDS.wagging[i]);
+  const company = values("interaction");
+  if (company.includes("person"))
+    out.push(lang === "es" ? "con una persona" : "with a person");
+  else if (company.includes("other_dog"))
+    out.push(lang === "es" ? "con otro perro" : "with another dog");
+  return [...new Set(out)].slice(0, 4).join(" · ");
+}
 
 /** Localization of server enrichment: speaker labels never identify the owner. */
 export function stackObservations(reading, lang) {
