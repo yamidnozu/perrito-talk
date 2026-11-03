@@ -1,8 +1,15 @@
 import { PARAMETERS } from "./evidence-config.js";
 import { sensitivityScale } from "./state.js";
 const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.0";
-const MODEL =
-  "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite";
+const MODEL_BASE =
+  "https://storage.googleapis.com/mediapipe-models/object_detector";
+// Measured on our clips (AUDIT.md): Lite2 (448 px input) finds small/far dogs that
+// Lite0 (320 px) misses, at ~3x the cost; slow devices drop back to Lite0.
+export const MODELS = {
+  lite2: `${MODEL_BASE}/efficientdet_lite2/int8/1/efficientdet_lite2.tflite`,
+  lite0: `${MODEL_BASE}/efficientdet_lite0/int8/1/efficientdet_lite0.tflite`,
+};
+const MODEL = MODELS.lite2;
 
 let warmed = false;
 // Lazy warm-up when the Live tab opens: start the large downloads in parallel so
@@ -31,13 +38,31 @@ export function createVisionEngine({
           height: 54,
         });
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const makeCanvas = () =>
+    typeof OffscreenCanvas === "function"
+      ? new OffscreenCanvas(1, 1)
+      : document.createElement("canvas");
+  const crop = makeCanvas(),
+    cropCtx = crop.getContext("2d");
+  const P = config.presence;
+  let tileIndex = 0,
+    lastT = -Infinity;
   let detector,
     previous,
     previousCenter,
     failure,
     stopped = false;
   const animals = config.presence.animalClasses || ["dog"];
-  const status = { state: "loading", delegate: null, ms: null, error: null };
+  const status = {
+    state: "loading",
+    delegate: null,
+    ms: null,
+    error: null,
+    model: P.model || "lite2",
+  };
+  let slowMs = null,
+    samples = 0,
+    swapping = false;
   const t0 = typeof performance === "object" ? performance.now() : 0;
   let createCpu = null;
   const ready = (async () => {
@@ -47,14 +72,14 @@ export function createVisionEngine({
       );
       const files = await FilesetResolver.forVisionTasks(`${CDN}/wasm`, true);
       createCpu = () => ObjectDetector.createFromOptions(files, options("CPU"));
-      const options = (delegate) => ({
-        baseOptions: { modelAssetPath: MODEL, delegate },
+      const options = (delegate, model = status.model) => ({
+        baseOptions: { modelAssetPath: MODELS[model] || MODEL, delegate },
         runningMode: "VIDEO",
         scoreThreshold: Math.min(
           0.9,
           config.presence.detectorScore * sensitivityScale(sensitivity, config),
         ),
-        maxResults: 3,
+        maxResults: 5,
       });
       let loaded;
       // GPU first when available; any delegate failure falls back to CPU (XNNPACK).
@@ -83,12 +108,69 @@ export function createVisionEngine({
     ready,
     measure(frame, t) {
       let detection;
-      try {
-        detection = detector
-          ?.detectForVideo(frame, t)
+      const width = frame.videoWidth || frame.width,
+        height = frame.videoHeight || frame.height;
+      ctx.drawImage(frame, 0, 0, 96, 54);
+      const pixels = ctx.getImageData(0, 0, 96, 54).data;
+      let luma = 0;
+      for (let i = 0; i < pixels.length; i += 4)
+        luma +=
+          0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+      luma /= (pixels.length / 4) * 255;
+      const dark = luma < (P.darkLuma ?? 0);
+      // VIDEO mode needs strictly increasing timestamps; tiles reuse the frame.
+      const stamp = () => (lastT = Math.max(t, lastT + 1));
+      const find = (source) =>
+        detector
+          ?.detectForVideo(source, stamp())
           .detections.find((d) =>
             animals.includes(d.categories[0]?.categoryName),
           );
+      // Draw a region (fractions) with an optional low-light boost; returns the canvas.
+      const region = ([x, y, w, h]) => {
+        crop.width = Math.round(w * width);
+        crop.height = Math.round(h * height);
+        cropCtx.filter = dark ? P.darkFilter || "none" : "none";
+        cropCtx.drawImage(
+          frame,
+          x * width,
+          y * height,
+          w * width,
+          h * height,
+          0,
+          0,
+          crop.width,
+          crop.height,
+        );
+        return crop;
+      };
+      const t1 = performance.now();
+      try {
+        detection = find(dark ? region([0, 0, 1, 1]) : frame);
+        // Small/far dogs shrink below EfficientDet's 320 px input: when the full
+        // frame finds nothing, check one overlapping tile per frame (rotating).
+        const tiles = P.tiles || [];
+        if (!detection && detector && tiles.length) {
+          const tile = tiles[tileIndex % tiles.length];
+          const hit = find(region(tile));
+          // Stay on the tile that found the dog; otherwise rotate.
+          if (!hit) tileIndex++;
+          if (hit) {
+            const b = hit.boundingBox,
+              sx = (tile[2] * width) / crop.width,
+              sy = (tile[3] * height) / crop.height;
+            detection = {
+              ...hit,
+              tile: true,
+              boundingBox: {
+                originX: tile[0] * width + b.originX * sx,
+                originY: tile[1] * height + b.originY * sy,
+                width: b.width * sx,
+                height: b.height * sy,
+              },
+            };
+          }
+        }
       } catch (e) {
         failure = e.message;
         detector?.close();
@@ -110,8 +192,28 @@ export function createVisionEngine({
             });
         } else status.state = "failed";
       }
-      const width = frame.videoWidth || frame.width,
-        height = frame.videoHeight || frame.height;
+      const detectMs = performance.now() - t1;
+      // Engineering: if the larger detector is too slow on this device, swap to Lite0.
+      if (detector) {
+        samples++;
+        slowMs = slowMs == null ? detectMs : 0.8 * slowMs + 0.2 * detectMs;
+        if (
+          status.model !== "lite0" &&
+          !swapping &&
+          samples >= 5 &&
+          slowMs > (P.maxDetectMs ?? Infinity)
+        ) {
+          swapping = true;
+          // setOptions reuses the loaded WASM graph (a second createFromOptions in the
+          // same worker fails with "ModuleFactory not set").
+          detector
+            .setOptions({ baseOptions: { modelAssetPath: MODELS.lite0 } })
+            .then(() => {
+              status.model = "lite0";
+            })
+            .catch((e) => (status.swapError = e.message));
+        }
+      }
       const box = detection?.boundingBox;
       const clamp = (n) => Math.max(0, Math.min(1, n));
       const bbox = box
@@ -133,8 +235,6 @@ export function createVisionEngine({
             ) / Math.hypot(width, height)
           : 0;
       previousCenter = center;
-      ctx.drawImage(frame, 0, 0, 96, 54);
-      const pixels = ctx.getImageData(0, 0, 96, 54).data;
       const [x, y, w, h] = bbox || [0, 0, 1, 1];
       let sum = 0,
         count = 0;
@@ -167,8 +267,12 @@ export function createVisionEngine({
         dogScore: detection?.categories[0]?.score || 0,
         dogLabel: detection?.categories[0]?.categoryName || null,
         visionStatus: detector ? "mediapipe" : "fallback",
+        lowLight: dark,
+        detectMs: Math.round(detectMs),
+        detectorModel: status.model,
+        dogVia: detection ? (detection.tile ? "tile" : "frame") : null,
         modelStatus: { ...status },
-        visionError: failure,
+        visionError: failure || status.swapError,
       };
     },
     stop() {

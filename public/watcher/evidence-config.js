@@ -97,6 +97,19 @@ export const PARAMETERS = {
     motionThreshold: 0.025,
     detectorScore: 0.25,
     delegate: "CPU",
+    // Engineering: overlapping crops [x, y, w, h] tried one per frame when the
+    // full frame finds no dog (small/far dogs); low-light boost below darkLuma.
+    tiles: [
+      [0.2, 0.2, 0.6, 0.6],
+      [0, 0, 0.6, 0.6],
+      [0.4, 0, 0.6, 0.6],
+      [0, 0.4, 0.6, 0.6],
+      [0.4, 0.4, 0.6, 0.6],
+    ],
+    darkLuma: 0.3,
+    model: "lite2",
+    maxDetectMs: 500,
+    darkFilter: "brightness(1.8) contrast(1.15)",
     animalClasses: [
       "dog",
       "cat",
