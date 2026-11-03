@@ -1080,7 +1080,7 @@ mountLive({
 });
 
 mountContext(
-  document.getElementById("situation").closest("details").parentElement,
+  document.getElementById("situation").closest("details"),
   () => lang,
   "uploadContextMode",
 );
