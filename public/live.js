@@ -7,7 +7,7 @@ import {
 } from "./evidence-utils.js";
 import { cameraHeuristics, alertTitle } from "./camera-heuristics.js";
 import { createFlight } from "./watcher/flight.js";
-import { newAlerts } from "./live-logic.js";
+import { newAlerts, preliminarySummary, selectLiveMedia } from "./live-logic.js";
 import { mountDevicePicker, openMedia, videoConstraints } from "./devices.js";
 import { startAudio } from "./watcher/audio.js";
 import { startVision } from "./watcher/vision.js";
@@ -636,6 +636,7 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
         prev_state: previous,
         time_in_prev_state_s: duration,
       });
+      showPreliminary(s);
       return;
     }
     // Engineering decision: change triggers collect 6 s after the trigger. First-look,
@@ -655,8 +656,63 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     s.pendingUntil = t + post;
     s.pendingWatcher = metadata;
     s.step = { kind: "change", reasons: trigger.types, since: t, post };
+    showPreliminary(s);
     refresh();
     s.postroll = setTimeout(() => void submit(s, metadata, clipAt, id), post);
+  }
+  // Instant on-device observation while the AI clip is prepared and analyzed.
+  // Strictly local state (presence/activity/sound); the AI card replaces it.
+  function showPreliminary(s) {
+    if (active !== s || !s.pendingWatcher) return;
+    const meta = s.pendingWatcher;
+    const card = $("liveResult");
+    card.hidden = false;
+    card.updateLanguage = () => {
+      const lang = getLang(),
+        prelim = preliminarySummary(meta, lang);
+      card.replaceChildren();
+      const badge = document.createElement("small");
+      badge.className = "badge prelim";
+      badge.textContent = prelim.badge;
+      const head = document.createElement("p");
+      head.className = "prelim-head";
+      head.textContent = `⏳ ${prelim.title} · ${reasonText(meta.trigger_types)}`;
+      card.append(badge, head);
+      const list = document.createElement("ul");
+      for (const line of prelim.lines) {
+        const li = document.createElement("li");
+        li.textContent = line;
+        list.append(li);
+      }
+      card.append(list);
+      const note = document.createElement("p");
+      note.className = "note";
+      note.textContent = prelim.note;
+      card.append(note);
+    };
+    card.updateLanguage();
+    if (!s.pendingRow) {
+      const row = rowFor(true);
+      s.pendingRow = row;
+      const at = Date.now();
+      row.updateLanguage = () => {
+        const prelim = preliminarySummary(meta, getLang());
+        row.textContent =
+          `${new Date(at).toLocaleTimeString(getLang(), { timeZone: "America/Bogota", hour12: false })} · ${prelim.badge.split("·")[0].trim()}: ${prelim.title} — ${prelim.lines.join(" · ")}`;
+      };
+      row.updateLanguage();
+    } else s.pendingRow.updateLanguage?.();
+    const overlay = $("liveOverlay");
+    overlay.updateLanguage = () => {
+      const prelim = preliminarySummary(meta, getLang());
+      overlay.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = `${prelim.title} (${getLang() === "es" ? "preliminar" : "preliminary"})`;
+      overlay.append(title);
+    };
+    overlay.updateLanguage();
+    if (window.__watcher.prelimMs == null)
+      window.__watcher.prelimMs = performance.now() - s.startedAt;
   }
   function manual(s) {
     if (active !== s || !s.buffer) return;
@@ -681,7 +737,9 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
     if (active !== s) return void s.flight?.release(id);
     delete s.pendingUntil;
     delete s.pendingWatcher;
-    const row = rowFor();
+    const row = s.pendingRow || rowFor();
+    s.pendingRow = null;
+    row.className = "";
     row.updateLanguage = () => {
       row.textContent = tr("Analyzing…", "Analizando…");
     };
@@ -699,12 +757,20 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       clip = await s.buffer.build(t);
       if (active !== s) return;
       window.__watcher.aiCalls++;
+      // The server only forwards the native video to Spark on the live path,
+      // so auxiliary keyframes are dead upload weight once a video exists.
+      const sendMedia = selectLiveMedia(clip.media);
+      window.__watcher.lastPayload = {
+        items: sendMedia.map((m) => m.kind),
+        bytes: sendMedia.reduce((n, m) => n + (m.data_b64?.length || 0), 0),
+      };
       const body = {
         lang: getLang(),
         source: "live",
         context: {},
         context_mode: s.contextMode,
         ...clip,
+        media: sendMedia,
         watcher,
         baseline: s.baseline.summary(),
       };

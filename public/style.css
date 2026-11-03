@@ -960,6 +960,21 @@ dialog img {
   opacity: 0.75;
   margin-bottom: 0.4rem;
 }
+.live-result .badge.prelim {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border: 2px dashed #8a6d1c;
+  border-radius: 1rem;
+  background: #fff8e1;
+  color: #5c4a12;
+}
+.live-result .prelim-head {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0.4rem 0;
+}
 .reading-headline {
   margin: 0.4rem 0 0.6rem;
 }
