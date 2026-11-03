@@ -90,7 +90,9 @@ export function analyzeAcoustics(pcm, config = PARAMETERS) {
     frames.map((f) => Math.max(0.0001, Math.min(0.9999, f.voicing))),
     0.5,
   );
-  metrics.hnr = 10 * Math.log10(periodicity / (1 - periodicity));
+  const hnr = 10 * Math.log10(periodicity / (1 - periodicity));
+  // No voiced frames (e.g. a silent or missing track): report "unknown", not -Infinity.
+  metrics.hnr = Number.isFinite(hnr) ? hnr : null;
   const rules = config.acoustic;
   const tonalRatio = metrics.tonal / (metrics.active || 1);
   const whines = tonalRuns.filter(

@@ -90,7 +90,7 @@ export type AcousticHints = {
     | "unclear";
   confidence: number;
   metrics: {
-    hnr?: number;
+    hnr?: number | null;
     active: number;
     tonal: number;
     longest_tonal_s: number;
@@ -432,6 +432,7 @@ export function validateAnalyze(value: unknown): AnalyzeInput {
         return !Number.isFinite(n) || (n as number) < 0 || (n as number) > max;
       }) ||
       (h.metrics.hnr !== undefined &&
+        h.metrics.hnr !== null &&
         (!Number.isFinite(h.metrics.hnr) ||
           h.metrics.hnr < -60 ||
           h.metrics.hnr > 60)) ||

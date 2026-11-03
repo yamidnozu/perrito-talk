@@ -415,3 +415,14 @@ describe("bounded watcher hints", () => {
     ).toThrow();
   });
 });
+
+describe("silent clips", () => {
+  it("accepts acoustic hints from an empty audio track (hnr null)", async () => {
+    const { analyzeAcoustics } = await import("../public/acoustics.js");
+    const hints = analyzeAcoustics(new Float32Array(0));
+    expect(hints.metrics.hnr).toBeNull();
+    expect(() =>
+      validateAnalyze({ ...input(), acoustic_hints: hints }),
+    ).not.toThrow();
+  });
+});
