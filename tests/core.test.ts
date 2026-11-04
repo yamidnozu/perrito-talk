@@ -4,6 +4,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { validateAnalyze, matchesSchema, readingSchema } from "../src/schema";
 import { mockReading, mockPatterns } from "../src/mock";
 import { parseResponse, mediaParts } from "../src/meta";
+import { encodeWav } from "../public/media.js";
 import worker from "../src/index";
 const input = () => ({
   lang: "en" as const,
@@ -264,21 +265,29 @@ describe("live card contract without network", () => {
 
 describe("live reading safeguards without network", () => {
   afterEach(() => vi.unstubAllGlobals());
-  it("sends one video with embedded audio to Spark low, retaining auxiliary WAV for preflight", async () => {
+  it("first live reading with MP4 still sends the WAV and YAMNet hints to Spark and ASR", async () => {
+    // Regression: the slimmed live payload (WAV+MP4, no keyframes) must keep
+    // real audio in front of the model. The first clip's MP4 audio is the
+    // least reliable (encoder-init race), so Spark gets the validated WAV too.
+    const wav = Buffer.from(
+      await encodeWav(new Float32Array(16000)).arrayBuffer(),
+    ).toString("base64");
     const reading = emptyDescriptors("Not observed");
-    reading.vocalization = {
-      ...reading.vocalization,
-      seen: "yes",
-      type: "howl",
-      count: 1,
-      evidence: "Howling 0–8s",
-    };
-    const upstream = vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({ output_text: JSON.stringify(reading) }),
-      );
-    vi.stubGlobal("fetch", upstream);
+    let sparkBody: any = null;
+    const asrCalls: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async (url: unknown, options: any) => {
+        if (String(url).endsWith("/asr/transcribe")) {
+          asrCalls.push(url);
+          return Response.json({ turns: [] });
+        }
+        sparkBody = JSON.parse(options.body);
+        return Response.json({
+          output_text: JSON.stringify(reading),
+        });
+      }),
+    );
     const response = await worker.fetch(
       new Request("https://local/api/analyze", {
         method: "POST",
@@ -287,45 +296,45 @@ describe("live reading safeguards without network", () => {
           ...input(),
           source: "live",
           media: [
+            { kind: "audio", mime: "audio/wav", data_b64: wav },
             { kind: "video", mime: "video/mp4", data_b64: "AAAA" },
-            { kind: "audio", mime: "audio/wav", data_b64: "AAAA" },
           ],
+          watcher: {
+            trigger: "first_look",
+            trigger_types: ["first_look"],
+            prev_state: null,
+            new_state: "vocalization:bark",
+            time_in_prev_state_s: 0,
+            yamnet: [{ label: "Bark", score: 0.9 }],
+            motion: 0.1,
+            centroid_shift: 0.01,
+            bbox: null,
+            dog_present: true,
+            detector: "fallback",
+            observations: {
+              vocal_type: "bark",
+              bursts: 3,
+              sustained_s: 1.2,
+              activity: "vocalization",
+            },
+          },
         }),
       }),
       { MODEL_API_KEY: "test-placeholder", ASSETS: { fetch: vi.fn() } as any },
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      mode: "live",
-      low_confidence: true,
-      primary: { label: "other" },
-      certainty: "especulativa",
-      dog_says: "",
-      observations: { vocalization: { type: "howl" } },
-    });
-    expect(upstream).toHaveBeenCalledTimes(1);
-    expect(
-      JSON.parse(upstream.mock.calls[0][1].body).text.format.schema,
-    ).toEqual(descriptorSchema);
-    const content = JSON.parse(upstream.mock.calls[0][1].body).input[0].content;
-    expect(content).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: "input_video",
-          video_url: "data:video/mp4;base64,AAAA",
-        }),
-      ]),
-    );
-    expect(content[0].text).toContain("embedded audio");
+    expect(await response.json()).toMatchObject({ mode: "live" });
+    const content = sparkBody.input[0].content;
     expect(
       content.filter((part: any) => part.type === "input_video"),
     ).toHaveLength(1);
-    expect(content.some((part: any) => part.type === "input_audio")).toBe(
-      false,
-    );
-    expect(JSON.parse(upstream.mock.calls[0][1].body).reasoning.effort).toBe(
-      "low",
-    );
+    const audios = content.filter((part: any) => part.type === "input_audio");
+    expect(audios).toHaveLength(1);
+    expect(audios[0].input_audio.data).toBe(wav);
+    expect(sparkBody.text.format.schema).toEqual(descriptorSchema);
+    expect(content[0].text).toContain('"label":"Bark"');
+    expect(sparkBody.reasoning.effort).toBe("low");
+    expect(asrCalls).toHaveLength(1);
   });
 });
 

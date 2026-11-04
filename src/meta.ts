@@ -62,11 +62,16 @@ export async function structured(
   model = MODEL,
   timeoutMs = 90000,
 ) {
-  const audioNote = parts.some((p: any) => p.type === "input_video")
-    ? "A video with its original embedded audio is attached. Listen to that track before choosing a label; report unavailable audio explicitly."
-    : parts.some((p: any) => p.type === "input_audio")
-      ? "An audio track is attached. Listen to it before choosing a label, including when accompanied by video frames."
-      : "No audio track is attached; do not invent audible vocalizations.";
+  const hasVideo = parts.some((p: any) => p.type === "input_video"),
+    hasAudio = parts.some((p: any) => p.type === "input_audio");
+  const audioNote =
+    hasVideo && hasAudio
+      ? "An MP4 video and its separately recorded WAV audio track are attached. Listen to both before choosing a label; the embedded video audio may be missing, so report unavailable audio explicitly only when neither carries sound."
+      : hasVideo
+        ? "A video with its original embedded audio is attached. Listen to that track before choosing a label; report unavailable audio explicitly."
+        : hasAudio
+          ? "An audio track is attached. Listen to it before choosing a label, including when accompanied by video frames."
+          : "No audio track is attached; do not invent audible vocalizations.";
   const r = await fetch("https://api.meta.ai/v1/responses", {
     method: "POST",
     headers: {

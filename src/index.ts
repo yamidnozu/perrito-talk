@@ -177,10 +177,17 @@ export default {
           input.baseline,
           { sam, human_speech },
         );
-        // Keep auxiliary JPEGs/WAV for SAM and ASR; a video already has its audio.
+        // The WAV is recorded separately from the MP4, whose embedded audio is
+        // not guaranteed (browser muxers; first-clip encoder race). Forward it
+        // to Spark with the video so barks survive a muted MP4; auxiliary
+        // JPEGs stay dropped to keep the live upload small. SAM/ASR keep
+        // using their own media below.
         const videos = input.media.filter((media) => media.kind === "video");
+        const audios = input.media.filter((media) => media.kind === "audio");
         const parts = mediaParts(
-          videos.length ? videos.slice(0, 1) : input.media,
+          videos.length
+            ? [...videos.slice(0, 1), ...audios.slice(0, 1)]
+            : input.media,
         );
         const deep = input.deep
           ? await deepDescriptors(env.MODEL_API_KEY!, prompt, parts, input.lang)

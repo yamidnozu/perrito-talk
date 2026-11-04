@@ -757,8 +757,8 @@ export function mountLive({ getLang, api, labelOf = (x) => x }) {
       clip = await s.buffer.build(t);
       if (active !== s) return;
       window.__watcher.aiCalls++;
-      // The server only forwards the native video to Spark on the live path,
-      // so auxiliary keyframes are dead upload weight once a video exists.
+      // The server forwards the native video plus the WAV to Spark on the live
+      // path, so auxiliary keyframes are dead upload weight once a video exists.
       const sendMedia = selectLiveMedia(clip.media);
       window.__watcher.lastPayload = {
         items: sendMedia.map((m) => m.kind),
