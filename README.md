@@ -21,7 +21,7 @@ Dogs communicate through a combination of sounds, posture and movement. PerritoT
 
 ## How it uses Meta
 
-The Worker calls `https://api.meta.ai/v1/responses` with **Muse Spark (`muse-spark-1.3`)**, multimodal image/video/audio content, conservative system instructions, low reasoning effort, and a strict JSON schema. MP4 includes embedded audio. Image inputs become JPEGs up to 1024 px. MP4 videos up to 12 MB pass through; other or larger video becomes four chronological JPEG frames up to 768 px plus mono 16 kHz WAV audio (first 30 seconds). Audio uploads and recordings become mono 16 kHz WAV, capped at 30 seconds. Maximum decoded media per request: 15 MB; maximum HTTP JSON body: 21 MB; maximum source file: 100 MB.
+The Worker calls `https://api.meta.ai/v1/responses` with **Muse Spark (`muse-spark-1.3`)**, multimodal image/video/audio content, conservative system instructions, low reasoning effort, and a strict JSON schema. MP4 audio is not assumed: live readings send the separate WAV to the model alongside the video. Image inputs become JPEGs up to 1024 px. MP4 videos up to 12 MB pass through; other or larger video becomes four chronological JPEG frames up to 768 px plus mono 16 kHz WAV audio (first 30 seconds). Audio uploads and recordings become mono 16 kHz WAV, capped at 30 seconds. Maximum decoded media per request: 15 MB; maximum HTTP JSON body: 21 MB; maximum source file: 100 MB.
 
 Muse Spark 1.3 has a documented audio-understanding caveat: our dog clips often return `NO_AUDIO`, including standalone WAV tests with 1.2 and 1.3. `public/acoustics.js` supplements the model with heuristic RMS, autocorrelation pitch and tonal-run hints from mono 16 kHz PCM (30 ms frames / 15 ms hop). Hints distinguish silence, music/noise, howl, whine/whimper, bark and unclear; they are not proof or a diagnosis. The UI displays a small `🔊 heard` chip. Confident dog-sound hints guide vocalization, evidence, labels and phrases; calm labels conflicting with howl/whine hints are flagged and capped at 0.39. Direct MP4 decoding failures omit hints while retaining embedded audio.
 
@@ -50,7 +50,7 @@ run for explicit upload/camera analyses, where SAM and ASR run in parallel befor
 | Muse Wonder                    | `muse-wonder-1.0`               | Optional day/pattern summaries                   | Awaiting owner A/B decision; Spark remains default            | $4 input / $20 output per million tokens; cached input $0.20      |
 | Realtime ASR websocket         | Muse Voice Transcribe streaming | Discarded for this workflow                      | Trigger-only clips; no measured gain from a persistent stream | Not used                                                          |
 | Muse Glimmer / Muse Spark Open | 30B / 816B self-hosted weights  | On-prem NVR roadmap only                         | GPU infrastructure required                                   | Self-hosting not estimated                                        |
-| Muse Code                      | Muse Code product               | Discarded for this repository                    | Owner uses Codex CLI                                          | Not used                                                          |
+| Muse (Meta)                    | Muse coding agent (Muse Spark)  | Coded the most recent version of this repository | Owner's current coding assistant                              | No runtime cost                                                   |
 
 `USE_SAM` and `USE_ASR` default on; `false`, `0` or `off` disables them.
 `SAM_MIN_CONFIDENCE` defaults to **0.5**. `ASR_MIN_TURN_MS=400` and
@@ -258,8 +258,9 @@ results; raw motion remains visible. Motion observations use a 2.5-second deboun
 so a newly audible class cannot preempt a still-pending six-second motion candidate.
 This smoothing and timing are engineering decisions, not behavior validation. Timestamps use America/Bogota.
 Raw motion is frame difference within the detected dog box, or the whole frame when
-unknown; centroid displacement is divided by the frame diagonal. EfficientDet only
-allows `dog`, at 3 fps (2 on low battery, 1 when hidden). Its module worker uses
+unknown; centroid displacement is divided by the frame diagonal. EfficientDet-Lite2
+by default (Lite0 fallback on slow devices) only allows `dog`, at 3 fps
+(2 on low battery, 1 when hidden). Its module worker uses
 transferable ImageBitmap/OffscreenCanvas, with a throttled main-thread fallback.
 
 YAMNet consumes overlapping 15,600-sample (~0.975 s) mono 16 kHz windows
